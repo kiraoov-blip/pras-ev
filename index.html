@@ -44,7 +44,7 @@
         </label>
         <div class="inline-checks">
           <label><input type="checkbox" id="applyWeekendDiscount" checked /> 봄·가을 주말 11~14시 50% 할인 반영</label>
-          <label><input type="checkbox" id="allowStacking" /> 신규 할인과 기존 주말할인 중복 허용</label>
+          <label><input type="checkbox" id="allowStacking" checked /> 신규 할인과 기존 주말할인 중복 허용</label>
         </div>
       </section>
 
@@ -67,25 +67,40 @@
             <option value="fixed">고정 단가 적용</option>
           </select>
         </label>
-        <label class="field with-output" id="discountPctWrap">
+        <label class="field synced-field" id="discountPctWrap">
           <span>할인율</span>
-          <input type="range" id="discountPct" min="0" max="90" step="1" value="30" />
-          <output id="discountPctOut">30%</output>
+          <div class="range-number-row">
+            <input type="range" id="discountPct" min="0" max="90" step="1" value="70" data-paired="true" aria-label="할인율 슬라이드" />
+            <div class="number-unit">
+              <input type="number" id="discountPctNumber" min="0" max="90" step="1" value="70" data-paired="true" aria-label="할인율 직접 입력" />
+              <span>%</span>
+            </div>
+          </div>
         </label>
         <label class="field with-output is-hidden" id="fixedPriceWrap">
           <span>고정 단가(1원 단위)</span>
           <input type="number" id="fixedPrice" min="0" max="1000" step="1" value="80" />
           <output>원/kWh</output>
         </label>
-        <label class="field with-output">
+        <label class="field synced-field">
           <span>할인시간 외 단가 조정률</span>
-          <input type="number" id="nonDiscountAdj" min="-30" max="100" step="0.000001" value="0" />
-          <output id="nonDiscountAdjOut">0%</output>
+          <div class="range-number-row">
+            <input type="range" id="nonDiscountAdj" min="-30" max="100" step="0.0000000001" value="0" data-paired="true" aria-label="할인시간 외 단가 조정률 슬라이드" />
+            <div class="number-unit">
+              <input type="number" id="nonDiscountAdjNumber" min="-30" max="100" step="0.0000000001" value="0" data-paired="true" aria-label="할인시간 외 단가 조정률 직접 입력" />
+              <span>%</span>
+            </div>
+          </div>
         </label>
-        <label class="field with-output">
+        <label class="field synced-field">
           <span>요금제 참여율</span>
-          <input type="range" id="participation" min="0" max="100" step="1" value="100" />
-          <output id="participationOut">100%</output>
+          <div class="range-number-row">
+            <input type="range" id="participation" min="0" max="100" step="1" value="80" data-paired="true" aria-label="요금제 참여율 슬라이드" />
+            <div class="number-unit">
+              <input type="number" id="participationNumber" min="0" max="100" step="1" value="80" data-paired="true" aria-label="요금제 참여율 직접 입력" />
+              <span>%</span>
+            </div>
+          </div>
         </label>
         <button id="neutralFixedBtn" type="button" class="primary-btn">1원 단위 매출중립 근사단가 적용</button>
         <button id="neutralizeBtn" type="button" class="secondary-btn">정확 매출중립 조정률 적용</button>
@@ -95,19 +110,29 @@
         <h2>3. 부하이전</h2>
         <p class="hint">선택한 원천 시간대의 참여고객 사용량 중 일부를 할인시간대로 같은 날짜 안에서 이전.</p>
         <div class="inline-checks compact">
-          <label><input type="checkbox" class="sourcePeriod" value="off" /> 경부하</label>
+          <label><input type="checkbox" class="sourcePeriod" value="off" checked /> 경부하</label>
           <label><input type="checkbox" class="sourcePeriod" value="mid" checked /> 중간부하</label>
           <label><input type="checkbox" class="sourcePeriod" value="peak" checked /> 최대부하</label>
         </div>
-        <label class="field with-output">
+        <label class="field synced-field">
           <span>완속 이전율</span>
-          <input type="range" id="slowShiftPct" min="0" max="80" step="1" value="20" />
-          <output id="slowShiftPctOut">20%</output>
+          <div class="range-number-row">
+            <input type="range" id="slowShiftPct" min="0" max="80" step="1" value="60" data-paired="true" aria-label="완속 이전율 슬라이드" />
+            <div class="number-unit">
+              <input type="number" id="slowShiftPctNumber" min="0" max="80" step="1" value="60" data-paired="true" aria-label="완속 이전율 직접 입력" />
+              <span>%</span>
+            </div>
+          </div>
         </label>
-        <label class="field with-output">
+        <label class="field synced-field">
           <span>급속 이전율</span>
-          <input type="range" id="fastShiftPct" min="0" max="80" step="1" value="5" />
-          <output id="fastShiftPctOut">5%</output>
+          <div class="range-number-row">
+            <input type="range" id="fastShiftPct" min="0" max="80" step="1" value="40" data-paired="true" aria-label="급속 이전율 슬라이드" />
+            <div class="number-unit">
+              <input type="number" id="fastShiftPctNumber" min="0" max="80" step="1" value="40" data-paired="true" aria-label="급속 이전율 직접 입력" />
+              <span>%</span>
+            </div>
+          </div>
         </label>
         <label class="field">
           <span>할인시간 내 배분 방식</span>
@@ -184,7 +209,7 @@
   </main>
 
   <footer class="footer">
-    <span>Prototype v2.1 · GitHub Pages 정적 웹앱</span>
+    <span>Prototype v2.2 · GitHub Pages 정적 웹앱</span>
     <span>전력량요금 매출 영향 검토용</span>
   </footer>
 </body>

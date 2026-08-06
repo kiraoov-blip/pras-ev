@@ -134,7 +134,7 @@ function populateSelects() {
   $("slowTariff").innerHTML = tariffOptions;
   $("fastTariff").innerHTML = tariffOptions;
   $("slowTariff").value = "self_low";
-  $("fastTariff").value = "service_high_1";
+  $("fastTariff").value = "self_high";
 
   let hourOptions = "";
   for (let h = 0; h <= 24; h += 1) {
@@ -147,31 +147,76 @@ function populateSelects() {
   $("discountEnd").value = "16";
 }
 
+const PAIRED_CONTROLS = [
+  { rangeId: "discountPct", numberId: "discountPctNumber", digits: 0 },
+  { rangeId: "nonDiscountAdj", numberId: "nonDiscountAdjNumber", digits: 10 },
+  { rangeId: "participation", numberId: "participationNumber", digits: 0 },
+  { rangeId: "slowShiftPct", numberId: "slowShiftPctNumber", digits: 0 },
+  { rangeId: "fastShiftPct", numberId: "fastShiftPctNumber", digits: 0 }
+];
+
 function bindEvents() {
-  document.querySelectorAll("input,select").forEach((el) => {
-    el.addEventListener("input", () => {
-      syncOutputs();
+  PAIRED_CONTROLS.forEach(bindPairedControl);
+
+  document.querySelectorAll("input:not([data-paired]),select").forEach((el) => {
+    const refresh = () => {
       updateVisibility();
       update();
-    });
-    el.addEventListener("change", () => {
-      syncOutputs();
-      updateVisibility();
-      update();
-    });
+    };
+    el.addEventListener("input", refresh);
+    el.addEventListener("change", refresh);
   });
+
   $("neutralizeBtn").addEventListener("click", setRevenueNeutralAdjustment);
   $("neutralFixedBtn").addEventListener("click", applyRevenueNeutralFixedPrice);
   $("downloadCsv").addEventListener("click", downloadHourlyCsv);
   syncOutputs();
 }
 
+function bindPairedControl(config) {
+  const range = $(config.rangeId);
+  const number = $(config.numberId);
+  const min = Number(range.min);
+  const max = Number(range.max);
+
+  const refresh = () => {
+    updateVisibility();
+    update();
+  };
+
+  range.addEventListener("input", () => {
+    number.value = formatPairedValue(range.value, config.digits);
+    refresh();
+  });
+  range.addEventListener("change", () => {
+    number.value = formatPairedValue(range.value, config.digits);
+    refresh();
+  });
+
+  const applyNumber = () => {
+    if (number.value === "" || !Number.isFinite(Number(number.value))) return;
+    const value = Math.min(max, Math.max(min, Number(number.value)));
+    range.value = String(value);
+    number.value = formatPairedValue(range.value, config.digits);
+    refresh();
+  };
+  number.addEventListener("input", applyNumber);
+  number.addEventListener("change", applyNumber);
+}
+
+function formatPairedValue(value, digits) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0";
+  if (digits === 0) return String(Math.round(n));
+  return compactNumber(n, digits);
+}
+
 function syncOutputs() {
-  $("discountPctOut").textContent = `${$("discountPct").value}%`;
-  $("nonDiscountAdjOut").textContent = `${compactNumber($("nonDiscountAdj").value, 6)}%`;
-  $("participationOut").textContent = `${$("participation").value}%`;
-  $("slowShiftPctOut").textContent = `${$("slowShiftPct").value}%`;
-  $("fastShiftPctOut").textContent = `${$("fastShiftPct").value}%`;
+  PAIRED_CONTROLS.forEach((config) => {
+    const range = $(config.rangeId);
+    const number = $(config.numberId);
+    number.value = formatPairedValue(range.value, config.digits);
+  });
 }
 
 function updateVisibility() {

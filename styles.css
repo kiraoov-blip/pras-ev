@@ -72,6 +72,13 @@ input[type="range"]{width:100%;accent-color:var(--accent)}
 .with-output{display:grid;grid-template-columns:1fr 58px;align-items:center;gap:8px}
 .with-output span{grid-column:1/-1}
 .with-output output{font-size:13px;font-weight:700;text-align:right;color:var(--accent-dark)}
+
+.synced-field{display:flex;flex-direction:column;gap:7px;margin:12px 0}
+.range-number-row{display:grid;grid-template-columns:minmax(0,1fr) 94px;align-items:center;gap:12px}
+.range-number-row input[type="range"]{min-width:0;margin:0}
+.number-unit{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:5px}
+.number-unit input[type="number"]{padding:8px 7px;text-align:right;font-variant-numeric:tabular-nums}
+.number-unit span{font-size:13px;font-weight:800;color:var(--accent-dark)}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .inline-checks{display:flex;flex-direction:column;gap:9px;margin-top:12px;font-size:13px;color:#334155}
 .inline-checks.compact{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
@@ -156,6 +163,7 @@ tbody tr:hover{background:#f8fbff}
   .hero{display:block}
   .hero-badge{margin-top:18px}
   .control-panel,.kpi-grid,.table-grid,.neutral-grid{grid-template-columns:1fr}
+  .range-number-row{grid-template-columns:minmax(0,1fr) 88px}
   .layout{padding:14px}
   .hero{padding:24px 18px}
   .hero h1{font-size:24px}
