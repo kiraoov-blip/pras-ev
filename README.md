@@ -1,4 +1,12 @@
-# 제주 전기차 시간대 지정 할인요금 매출영향 시뮬레이터
+# 전기차 요금설계 및 매출영향 분석 시뮬레이터(PRAS-EV)
+
+## 영문명
+
+Pricing and Revenue Analysis Simulator - EV Charging
+
+## 웹사이트
+
+https://kiraoov-blip.github.io/pras-ev/
 
 ## 1. 목적
 
@@ -39,7 +47,7 @@
 ## 4. 파일 구조
 
 ```text
-jeju_ev_octopus_simulator/
+pras-ev/
   index.html
   styles.css
   app.js
@@ -58,7 +66,7 @@ GitHub에서 신규 저장소를 생성합니다.
 예시 저장소명:
 
 ```text
-jeju-ev-tariff-simulator
+pras-ev
 ```
 
 Public 저장소로 만들면 GitHub Pages 설정이 가장 단순합니다.
@@ -192,3 +200,12 @@ http://localhost:8000
 - 신규 할인요금의 단가 비교 상자에 `현행요금 환산` 행 추가
 - 동일한 부하이전 후 참여고객 사용량에 현행 TOU를 적용한 할인시간대·비할인시간대 가중평균 단가 표시
 - 선택한 완속·급속 현행 요금표의 계절·시간대별 원단가 범위 표시
+
+
+## v2.6 변경사항
+
+- 국문명: 전기차 요금설계 및 매출영향 분석 시뮬레이터(PRAS-EV)
+- 영문 부제: Pricing and Revenue Analysis Simulator - EV Charging
+- 브라우저 탭 제목: PRAS-EV
+- 권장 GitHub 저장소명: pras-ev
+- GitHub Pages 주소: https://kiraoov-blip.github.io/pras-ev/

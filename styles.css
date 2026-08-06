@@ -26,7 +26,9 @@ body{
   color:#fff;
   background:linear-gradient(135deg,#0f3b75,#2563eb 58%,#38bdf8);
 }
+.hero-title-wrap{display:flex;flex-direction:column;gap:6px}
 .hero h1{margin:0;font-size:30px;line-height:1.25;letter-spacing:-.02em}
+.hero p{margin:0;font-size:15px;line-height:1.4;font-weight:600;opacity:.88;letter-spacing:.01em}
 .layout{
   display:grid;
   grid-template-columns:360px minmax(0,1fr);
@@ -150,6 +152,7 @@ tbody tr:hover{background:#f8fbff}
   .layout{padding:14px}
   .hero{padding:24px 18px}
   .hero h1{font-size:24px}
+  .hero p{font-size:13px}
 }
 
 .rate-compare-box{
