@@ -79,7 +79,7 @@
         </label>
         <label class="field with-output">
           <span>할인시간 외 단가 조정률</span>
-          <input type="range" id="nonDiscountAdj" min="-30" max="100" step="1" value="0" />
+          <input type="number" id="nonDiscountAdj" min="-30" max="100" step="0.000001" value="0" />
           <output id="nonDiscountAdjOut">0%</output>
         </label>
         <label class="field with-output">
@@ -87,8 +87,8 @@
           <input type="range" id="participation" min="0" max="100" step="1" value="100" />
           <output id="participationOut">100%</output>
         </label>
-        <button id="neutralFixedBtn" type="button" class="primary-btn">매출중립 할인시간 단가 적용</button>
-        <button id="neutralizeBtn" type="button" class="secondary-btn">현재 이전율 기준 비할인시간 조정률 계산</button>
+        <button id="neutralFixedBtn" type="button" class="primary-btn">1원 단위 매출중립 근사단가 적용</button>
+        <button id="neutralizeBtn" type="button" class="secondary-btn">정확 매출중립 조정률 적용</button>
       </section>
 
       <section class="panel-section">
@@ -184,7 +184,7 @@
   </main>
 
   <footer class="footer">
-    <span>Prototype v1.1 · GitHub Pages 정적 웹앱</span>
+    <span>Prototype v2.1 · GitHub Pages 정적 웹앱</span>
     <span>전력량요금 매출 영향 검토용</span>
   </footer>
 </body>

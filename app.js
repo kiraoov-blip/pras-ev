@@ -168,7 +168,7 @@ function bindEvents() {
 
 function syncOutputs() {
   $("discountPctOut").textContent = `${$("discountPct").value}%`;
-  $("nonDiscountAdjOut").textContent = `${$("nonDiscountAdj").value}%`;
+  $("nonDiscountAdjOut").textContent = `${compactNumber($("nonDiscountAdj").value, 6)}%`;
   $("participationOut").textContent = `${$("participation").value}%`;
   $("slowShiftPctOut").textContent = `${$("slowShiftPct").value}%`;
   $("fastShiftPctOut").textContent = `${$("fastShiftPct").value}%`;
@@ -531,7 +531,7 @@ function renderNeutralSummary(result) {
   const fixedPrice = Number(result.controls.fixedPrice || 0);
   const fixedDelta = info.fixedResult ? info.fixedResult.revenueDelta : 0;
   const priceLine = info.possible
-    ? `정확값 ${number(info.price, 2)}원/kWh · 1원 단위 적용값 기준 증감 ${formatSignedWon(info.roundedDelta)}`
+    ? `1원 단위 근사값 ${number(info.roundedPrice, 0)}원/kWh 적용 시 ${formatSignedWon(info.roundedDelta)}`
     : info.reason;
   const sensitivityLine = `단가 1원/kWh 인상 시 ${formatSignedWon(info.oneWonImpact)} 변동`;
   const modeNote = result.controls.pricingMode === "fixed"
@@ -540,8 +540,8 @@ function renderNeutralSummary(result) {
 
   $("neutralGrid").innerHTML = `
     <article class="neutral-item primary">
-      <span>매출중립 할인시간 단가</span>
-      <strong>${number(info.roundedPrice, 0)}원/kWh</strong>
+      <span>정확 매출중립 할인시간 단가</span>
+      <strong>${number(info.price, 2)}원/kWh</strong>
       <em>${priceLine}</em>
     </article>
     <article class="neutral-item">
@@ -706,36 +706,44 @@ function renderHourlyTable(result) {
 
 function setRevenueNeutralAdjustment() {
   const baseControls = getControls({ nonDiscountAdj: 0 });
-  const target = computeScenario(baseControls).currentRevenue;
-  const f = (adj) => computeScenario({ ...baseControls, nonDiscountAdj: adj }).scenarioRevenue - target;
-  const lo = -30;
-  const hi = 100;
-  const flo = f(lo);
-  const fhi = f(hi);
-  if (flo > 0) {
-    $("nonDiscountAdj").value = lo;
-    syncOutputs();
-    update();
-    alert("-30% 조정률에서도 매출이 현행보다 높습니다. 하한값으로 설정했습니다.");
+  const baseResult = computeScenario(baseControls);
+  const targetRevenue = baseResult.currentRevenue;
+  const onePointResult = computeScenario({ ...baseControls, nonDiscountAdj: 1 });
+  const revenuePerPctPoint = onePointResult.scenarioRevenue - baseResult.scenarioRevenue;
+
+  if (!Number.isFinite(revenuePerPctPoint) || Math.abs(revenuePerPctPoint) < 0.000001) {
+    alert("비할인시간 적용 사용량이 없어 매출중립 조정률을 계산할 수 없습니다.");
     return;
   }
-  if (fhi < 0) {
-    $("nonDiscountAdj").value = hi;
+
+  let adj = (targetRevenue - baseResult.scenarioRevenue) / revenuePerPctPoint;
+  const minAdj = Number($("nonDiscountAdj").min || -30);
+  const maxAdj = Number($("nonDiscountAdj").max || 100);
+
+  if (adj < minAdj) {
+    $("nonDiscountAdj").value = minAdj;
     syncOutputs();
     update();
-    alert("100% 조정률에서도 매출중립에 도달하지 못합니다. 상한값으로 설정했습니다.");
+    alert(`${compactNumber(minAdj, 2)}% 조정률에서도 현행 매출보다 높아 하한값을 적용했습니다.`);
     return;
   }
-  let left = lo;
-  let right = hi;
-  for (let i = 0; i < 50; i += 1) {
-    const mid = (left + right) / 2;
-    const fm = f(mid);
-    if (fm < 0) left = mid;
-    else right = mid;
+  if (adj > maxAdj) {
+    $("nonDiscountAdj").value = maxAdj;
+    syncOutputs();
+    update();
+    alert(`${compactNumber(maxAdj, 2)}% 조정률에서도 매출중립에 도달하지 못해 상한값을 적용했습니다.`);
+    return;
   }
-  const adj = Math.round(((left + right) / 2) * 10) / 10;
-  $("nonDiscountAdj").value = adj;
+
+  // 계산구조가 조정률에 대해 선형이므로 정확해를 직접 산정함.
+  // 소수점 10자리까지 입력값에 보존하여 원 단위 표시에서 매출증감이 0원이 되도록 함.
+  let exactResult = computeScenario({ ...baseControls, nonDiscountAdj: adj });
+  const residual = exactResult.scenarioRevenue - targetRevenue;
+  if (Math.abs(residual) > 0.000001) {
+    adj -= residual / revenuePerPctPoint;
+  }
+
+  $("nonDiscountAdj").value = adj.toFixed(10);
   syncOutputs();
   update();
 }
@@ -788,6 +796,12 @@ function formatSignedKwh(value) {
 
 function formatSignedPct(value) {
   return `${value >= 0 ? "+" : ""}${number(value, 2)}%`;
+}
+
+function compactNumber(value, maxDigits = 6) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0";
+  return n.toLocaleString("ko-KR", { maximumFractionDigits: maxDigits });
 }
 
 function number(value, digits = 0) {
