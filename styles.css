@@ -79,6 +79,18 @@ input[type="range"]{width:100%;accent-color:var(--accent)}
 .hint{font-size:12px;line-height:1.5;color:var(--muted);margin:0 0 8px}
 .note-box{background:#fbfdff}
 .note-box ul{margin:0;padding-left:18px;color:#475569;font-size:12px;line-height:1.6}
+.primary-btn{
+  width:100%;
+  border:1px solid var(--accent-dark);
+  border-radius:10px;
+  padding:10px 12px;
+  background:var(--accent);
+  color:#fff;
+  font-weight:800;
+  cursor:pointer;
+  margin:4px 0 8px;
+}
+.primary-btn:hover{background:var(--accent-dark)}
 .secondary-btn{
   width:100%;
   border:1px solid #b9c8df;
@@ -107,6 +119,19 @@ input[type="range"]{width:100%;accent-color:var(--accent)}
 .kpi .sub{font-size:12px;color:#64748b;line-height:1.35}
 .kpi.delta.positive .value{color:var(--good)}
 .kpi.delta.negative .value{color:var(--bad)}
+.neutral-card{background:#fbfdff}
+.neutral-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.neutral-item{
+  border:1px solid #dbe6f4;
+  border-radius:14px;
+  background:#fff;
+  padding:14px;
+  min-height:112px;
+}
+.neutral-item.primary{background:var(--soft);border-color:#b7d4ff}
+.neutral-item span{display:block;font-size:12px;font-weight:800;color:#64748b;margin-bottom:8px}
+.neutral-item strong{display:block;font-size:23px;line-height:1.2;letter-spacing:-.02em;margin-bottom:8px}
+.neutral-item em{display:block;font-size:12px;line-height:1.4;color:#64748b;font-style:normal}
 .chart-grid{display:grid;grid-template-columns:1fr;gap:18px}
 .table-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 .card{padding:18px;min-width:0}
@@ -124,12 +149,13 @@ tbody tr:hover{background:#f8fbff}
 @media (max-width:1180px){
   .layout{grid-template-columns:1fr}
   .control-panel{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .neutral-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .note-box{grid-column:1/-1}
 }
 @media (max-width:820px){
   .hero{display:block}
   .hero-badge{margin-top:18px}
-  .control-panel,.kpi-grid,.table-grid{grid-template-columns:1fr}
+  .control-panel,.kpi-grid,.table-grid,.neutral-grid{grid-template-columns:1fr}
   .layout{padding:14px}
   .hero{padding:24px 18px}
   .hero h1{font-size:24px}

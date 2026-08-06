@@ -114,6 +114,7 @@ const $ = (id) => document.getElementById(id);
 let hourlyChart = null;
 let monthlyChart = null;
 let lastResult = null;
+let lastNeutralInfo = null;
 
 function init() {
   if (!window.EV_USAGE_DATA || !Array.isArray(window.EV_USAGE_DATA.records)) {
@@ -160,6 +161,7 @@ function bindEvents() {
     });
   });
   $("neutralizeBtn").addEventListener("click", setRevenueNeutralAdjustment);
+  $("neutralFixedBtn").addEventListener("click", applyRevenueNeutralFixedPrice);
   $("downloadCsv").addEventListener("click", downloadHourlyCsv);
   syncOutputs();
 }
@@ -443,10 +445,139 @@ function computeScenario(controls) {
   };
 }
 
+
+function scenarioWithFixedPrice(controls, fixedPrice) {
+  return computeScenario({ ...controls, pricingMode: "fixed", fixedPrice: fixedPrice });
+}
+
+function findRevenueNeutralFixedPrice(controls) {
+  const baseControls = { ...controls, pricingMode: "fixed" };
+  const targetRevenue = computeScenario(baseControls).currentRevenue;
+  const f = (price) => scenarioWithFixedPrice(baseControls, price).scenarioRevenue - targetRevenue;
+
+  let lo = 0;
+  let hi = 500;
+  let flo = f(lo);
+  let fhi = f(hi);
+
+  while (fhi < 0 && hi < 5000) {
+    hi *= 2;
+    fhi = f(hi);
+  }
+
+  if (flo > 0) {
+    const zeroResult = scenarioWithFixedPrice(baseControls, 0);
+    return {
+      possible: false,
+      reason: "0원/kWh에서도 현행 매출을 초과합니다.",
+      targetRevenue,
+      price: 0,
+      roundedPrice: 0,
+      roundedDelta: zeroResult.scenarioRevenue - targetRevenue,
+      oneWonImpact: scenarioWithFixedPrice(baseControls, 1).scenarioRevenue - zeroResult.scenarioRevenue,
+      fixedResult: scenarioWithFixedPrice(baseControls, Number(controls.fixedPrice || 0))
+    };
+  }
+
+  if (fhi < 0) {
+    const highResult = scenarioWithFixedPrice(baseControls, hi);
+    return {
+      possible: false,
+      reason: `${number(hi, 0)}원/kWh에서도 매출중립에 도달하지 못합니다.`,
+      targetRevenue,
+      price: hi,
+      roundedPrice: hi,
+      roundedDelta: highResult.scenarioRevenue - targetRevenue,
+      oneWonImpact: scenarioWithFixedPrice(baseControls, hi + 1).scenarioRevenue - highResult.scenarioRevenue,
+      fixedResult: scenarioWithFixedPrice(baseControls, Number(controls.fixedPrice || 0))
+    };
+  }
+
+  for (let i = 0; i < 60; i += 1) {
+    const mid = (lo + hi) / 2;
+    const fm = f(mid);
+    if (fm < 0) lo = mid;
+    else hi = mid;
+  }
+
+  const price = (lo + hi) / 2;
+  const floorPrice = Math.max(0, Math.floor(price));
+  const ceilPrice = Math.ceil(price);
+  const floorResult = scenarioWithFixedPrice(baseControls, floorPrice);
+  const ceilResult = scenarioWithFixedPrice(baseControls, ceilPrice);
+  const floorDelta = Math.abs(floorResult.scenarioRevenue - targetRevenue);
+  const ceilDelta = Math.abs(ceilResult.scenarioRevenue - targetRevenue);
+  const roundedPrice = floorDelta <= ceilDelta ? floorPrice : ceilPrice;
+  const roundedResult = roundedPrice === floorPrice ? floorResult : ceilResult;
+  const plusOneResult = scenarioWithFixedPrice(baseControls, roundedPrice + 1);
+  const fixedResult = scenarioWithFixedPrice(baseControls, Number(controls.fixedPrice || 0));
+
+  return {
+    possible: true,
+    targetRevenue,
+    price,
+    floorPrice,
+    ceilPrice,
+    roundedPrice,
+    roundedDelta: roundedResult.scenarioRevenue - targetRevenue,
+    oneWonImpact: plusOneResult.scenarioRevenue - roundedResult.scenarioRevenue,
+    fixedResult
+  };
+}
+
+function renderNeutralSummary(result) {
+  const info = findRevenueNeutralFixedPrice(result.controls);
+  lastNeutralInfo = info;
+  const fixedPrice = Number(result.controls.fixedPrice || 0);
+  const fixedDelta = info.fixedResult ? info.fixedResult.revenueDelta : 0;
+  const priceLine = info.possible
+    ? `정확값 ${number(info.price, 2)}원/kWh · 1원 단위 적용값 기준 증감 ${formatSignedWon(info.roundedDelta)}`
+    : info.reason;
+  const sensitivityLine = `단가 1원/kWh 인상 시 ${formatSignedWon(info.oneWonImpact)} 변동`;
+  const modeNote = result.controls.pricingMode === "fixed"
+    ? "현재 화면도 고정단가 모드로 계산 중"
+    : "현재 화면은 정률할인 모드이며, 아래 단가는 고정단가 대안 기준";
+
+  $("neutralGrid").innerHTML = `
+    <article class="neutral-item primary">
+      <span>매출중립 할인시간 단가</span>
+      <strong>${number(info.roundedPrice, 0)}원/kWh</strong>
+      <em>${priceLine}</em>
+    </article>
+    <article class="neutral-item">
+      <span>1원 조정 민감도</span>
+      <strong>${formatSignedWon(info.oneWonImpact)}</strong>
+      <em>${sensitivityLine}</em>
+    </article>
+    <article class="neutral-item">
+      <span>현재 고정단가 입력값</span>
+      <strong>${number(fixedPrice, 0)}원/kWh</strong>
+      <em>고정단가 적용 시 매출증감 ${formatSignedWon(fixedDelta)}</em>
+    </article>
+    <article class="neutral-item">
+      <span>계산 조건</span>
+      <strong>${timeRangeText(result.controls.discountStart, result.controls.discountEnd)}</strong>
+      <em>${modeNote}</em>
+    </article>
+  `;
+}
+
+function applyRevenueNeutralFixedPrice() {
+  const controls = getControls();
+  const info = findRevenueNeutralFixedPrice(controls);
+  if (!info || !Number.isFinite(info.roundedPrice)) return;
+  $("pricingMode").value = "fixed";
+  $("fixedPrice").value = info.roundedPrice;
+  syncOutputs();
+  updateVisibility();
+  update();
+}
+
 function update() {
   const controls = getControls();
   lastResult = computeScenario(controls);
   renderKpis(lastResult);
+  renderNeutralSummary(lastResult);
   renderCharts(lastResult);
   renderTables(lastResult);
 }
