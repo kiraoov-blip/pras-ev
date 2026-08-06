@@ -149,7 +149,7 @@ function populateSelects() {
 
 const PAIRED_CONTROLS = [
   { rangeId: "discountPct", numberId: "discountPctNumber", digits: 0 },
-  { rangeId: "nonDiscountAdj", numberId: "nonDiscountAdjNumber", digits: 10 },
+  { rangeId: "nonDiscountAdj", numberId: "nonDiscountAdjNumber", digits: 1 },
   { rangeId: "participation", numberId: "participationNumber", digits: 0 },
   { rangeId: "slowShiftPct", numberId: "slowShiftPctNumber", digits: 0 },
   { rangeId: "fastShiftPct", numberId: "fastShiftPctNumber", digits: 0 }
@@ -206,9 +206,9 @@ function bindPairedControl(config) {
 
 function formatPairedValue(value, digits) {
   const n = Number(value);
-  if (!Number.isFinite(n)) return "0";
+  if (!Number.isFinite(n)) return digits > 0 ? Number(0).toFixed(digits) : "0";
   if (digits === 0) return String(Math.round(n));
-  return compactNumber(n, digits);
+  return n.toLocaleString("ko-KR", { minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping: false });
 }
 
 function syncOutputs() {
@@ -519,7 +519,7 @@ function findRevenueNeutralFixedPrice(controls) {
       price: 0,
       roundedPrice: 0,
       roundedDelta: zeroResult.scenarioRevenue - targetRevenue,
-      oneWonImpact: scenarioWithFixedPrice(baseControls, 1).scenarioRevenue - zeroResult.scenarioRevenue,
+      tenthWonImpact: scenarioWithFixedPrice(baseControls, 0.1).scenarioRevenue - zeroResult.scenarioRevenue,
       fixedResult: scenarioWithFixedPrice(baseControls, Number(controls.fixedPrice || 0))
     };
   }
@@ -533,7 +533,7 @@ function findRevenueNeutralFixedPrice(controls) {
       price: hi,
       roundedPrice: hi,
       roundedDelta: highResult.scenarioRevenue - targetRevenue,
-      oneWonImpact: scenarioWithFixedPrice(baseControls, hi + 1).scenarioRevenue - highResult.scenarioRevenue,
+      tenthWonImpact: scenarioWithFixedPrice(baseControls, hi + 0.1).scenarioRevenue - highResult.scenarioRevenue,
       fixedResult: scenarioWithFixedPrice(baseControls, Number(controls.fixedPrice || 0))
     };
   }
@@ -546,15 +546,15 @@ function findRevenueNeutralFixedPrice(controls) {
   }
 
   const price = (lo + hi) / 2;
-  const floorPrice = Math.max(0, Math.floor(price));
-  const ceilPrice = Math.ceil(price);
+  const floorPrice = Math.max(0, Math.floor(price * 10) / 10);
+  const ceilPrice = Math.ceil(price * 10) / 10;
   const floorResult = scenarioWithFixedPrice(baseControls, floorPrice);
   const ceilResult = scenarioWithFixedPrice(baseControls, ceilPrice);
   const floorDelta = Math.abs(floorResult.scenarioRevenue - targetRevenue);
   const ceilDelta = Math.abs(ceilResult.scenarioRevenue - targetRevenue);
   const roundedPrice = floorDelta <= ceilDelta ? floorPrice : ceilPrice;
-  const roundedResult = roundedPrice === floorPrice ? floorResult : ceilResult;
-  const plusOneResult = scenarioWithFixedPrice(baseControls, roundedPrice + 1);
+  const roundedResult = Math.abs(roundedPrice - floorPrice) < 0.0000001 ? floorResult : ceilResult;
+  const plusTenthResult = scenarioWithFixedPrice(baseControls, roundedPrice + 0.1);
   const fixedResult = scenarioWithFixedPrice(baseControls, Number(controls.fixedPrice || 0));
 
   return {
@@ -565,7 +565,7 @@ function findRevenueNeutralFixedPrice(controls) {
     ceilPrice,
     roundedPrice,
     roundedDelta: roundedResult.scenarioRevenue - targetRevenue,
-    oneWonImpact: plusOneResult.scenarioRevenue - roundedResult.scenarioRevenue,
+    tenthWonImpact: plusTenthResult.scenarioRevenue - roundedResult.scenarioRevenue,
     fixedResult
   };
 }
@@ -576,9 +576,9 @@ function renderNeutralSummary(result) {
   const fixedPrice = Number(result.controls.fixedPrice || 0);
   const fixedDelta = info.fixedResult ? info.fixedResult.revenueDelta : 0;
   const priceLine = info.possible
-    ? `1원 단위 근사값 ${number(info.roundedPrice, 0)}원/kWh 적용 시 ${formatSignedWon(info.roundedDelta)}`
+    ? `근사값 ${number(info.roundedPrice, 1)}원/kWh 적용 시 ${formatSignedWon(info.roundedDelta)}`
     : info.reason;
-  const sensitivityLine = `단가 1원/kWh 인상 시 ${formatSignedWon(info.oneWonImpact)} 변동`;
+  const sensitivityLine = `단가 0.1원/kWh 인상 시 ${formatSignedWon(info.tenthWonImpact)} 변동`;
   const modeNote = result.controls.pricingMode === "fixed"
     ? "현재 화면도 고정단가 모드로 계산 중"
     : "현재 화면은 정률할인 모드이며, 아래 단가는 고정단가 대안 기준";
@@ -590,13 +590,13 @@ function renderNeutralSummary(result) {
       <em>${priceLine}</em>
     </article>
     <article class="neutral-item">
-      <span>1원 조정 민감도</span>
-      <strong>${formatSignedWon(info.oneWonImpact)}</strong>
+      <span>0.1원 조정 민감도</span>
+      <strong>${formatSignedWon(info.tenthWonImpact)}</strong>
       <em>${sensitivityLine}</em>
     </article>
     <article class="neutral-item">
       <span>현재 고정단가 입력값</span>
-      <strong>${number(fixedPrice, 0)}원/kWh</strong>
+      <strong>${number(fixedPrice, 1)}원/kWh</strong>
       <em>고정단가 적용 시 매출증감 ${formatSignedWon(fixedDelta)}</em>
     </article>
     <article class="neutral-item">
@@ -612,7 +612,7 @@ function applyRevenueNeutralFixedPrice() {
   const info = findRevenueNeutralFixedPrice(controls);
   if (!info || !Number.isFinite(info.roundedPrice)) return;
   $("pricingMode").value = "fixed";
-  $("fixedPrice").value = info.roundedPrice;
+  $("fixedPrice").value = Number(info.roundedPrice).toFixed(1);
   syncOutputs();
   updateVisibility();
   update();
@@ -780,15 +780,17 @@ function setRevenueNeutralAdjustment() {
     return;
   }
 
-  // 계산구조가 조정률에 대해 선형이므로 정확해를 직접 산정함.
-  // 소수점 10자리까지 입력값에 보존하여 원 단위 표시에서 매출증감이 0원이 되도록 함.
-  let exactResult = computeScenario({ ...baseControls, nonDiscountAdj: adj });
-  const residual = exactResult.scenarioRevenue - targetRevenue;
-  if (Math.abs(residual) > 0.000001) {
-    adj -= residual / revenuePerPctPoint;
-  }
+  // 화면 가독성을 위해 조정률은 0.1%p 단위의 근사값으로 적용함.
+  // 정확한 중립값과 인접한 0.1%p 후보 중 매출차이 절댓값이 작은 값을 선택함.
+  const lowerAdj = Math.floor(adj * 10) / 10;
+  const upperAdj = Math.ceil(adj * 10) / 10;
+  const lowerResult = computeScenario({ ...baseControls, nonDiscountAdj: lowerAdj });
+  const upperResult = computeScenario({ ...baseControls, nonDiscountAdj: upperAdj });
+  const lowerGap = Math.abs(lowerResult.scenarioRevenue - targetRevenue);
+  const upperGap = Math.abs(upperResult.scenarioRevenue - targetRevenue);
+  const roundedAdj = lowerGap <= upperGap ? lowerAdj : upperAdj;
 
-  $("nonDiscountAdj").value = adj.toFixed(10);
+  $("nonDiscountAdj").value = roundedAdj.toFixed(1);
   syncOutputs();
   update();
 }

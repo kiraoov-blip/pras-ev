@@ -11,15 +11,7 @@
 </head>
 <body>
   <header class="hero">
-    <div>
-      <div class="eyebrow">2025년 제주 전기차 충전사용량 × 2026년 전기자동차 충전전력요금</div>
-      <h1>제주 전기차 시간대 지정 할인요금 매출영향 시뮬레이터</h1>
-      <p>기본요금 제외, 전력량요금만 산정. H01은 00:00~01:00, 사용량 단위는 kWh로 처리.</p>
-    </div>
-    <div class="hero-badge">
-      <span>기본 할인시간</span>
-      <strong>10:00–16:00</strong>
-    </div>
+    <h1>제주 전기차 시간대 지정 할인요금 매출영향 시뮬레이터</h1>
   </header>
 
   <main class="layout">
@@ -78,16 +70,16 @@
           </div>
         </label>
         <label class="field with-output is-hidden" id="fixedPriceWrap">
-          <span>고정 단가(1원 단위)</span>
-          <input type="number" id="fixedPrice" min="0" max="1000" step="1" value="80" />
+          <span>고정 단가(0.1원 단위)</span>
+          <input type="number" id="fixedPrice" min="0" max="1000" step="0.1" value="80.0" />
           <output>원/kWh</output>
         </label>
         <label class="field synced-field">
           <span>할인시간 외 단가 조정률</span>
           <div class="range-number-row">
-            <input type="range" id="nonDiscountAdj" min="-30" max="100" step="0.0000000001" value="0" data-paired="true" aria-label="할인시간 외 단가 조정률 슬라이드" />
+            <input type="range" id="nonDiscountAdj" min="-30" max="100" step="0.1" value="0.0" data-paired="true" aria-label="할인시간 외 단가 조정률 슬라이드" />
             <div class="number-unit">
-              <input type="number" id="nonDiscountAdjNumber" min="-30" max="100" step="0.0000000001" value="0" data-paired="true" aria-label="할인시간 외 단가 조정률 직접 입력" />
+              <input type="number" id="nonDiscountAdjNumber" min="-30" max="100" step="0.1" value="0.0" data-paired="true" aria-label="할인시간 외 단가 조정률 직접 입력" />
               <span>%</span>
             </div>
           </div>
@@ -102,8 +94,8 @@
             </div>
           </div>
         </label>
-        <button id="neutralFixedBtn" type="button" class="primary-btn">1원 단위 매출중립 근사단가 적용</button>
-        <button id="neutralizeBtn" type="button" class="secondary-btn">정확 매출중립 조정률 적용</button>
+        <button id="neutralFixedBtn" type="button" class="primary-btn">매출중립 근사단가 적용</button>
+        <button id="neutralizeBtn" type="button" class="secondary-btn">매출중립 근사 조정률 적용</button>
       </section>
 
       <section class="panel-section">
@@ -117,9 +109,9 @@
         <label class="field synced-field">
           <span>완속 이전율</span>
           <div class="range-number-row">
-            <input type="range" id="slowShiftPct" min="0" max="80" step="1" value="60" data-paired="true" aria-label="완속 이전율 슬라이드" />
+            <input type="range" id="slowShiftPct" min="0" max="80" step="1" value="50" data-paired="true" aria-label="완속 이전율 슬라이드" />
             <div class="number-unit">
-              <input type="number" id="slowShiftPctNumber" min="0" max="80" step="1" value="60" data-paired="true" aria-label="완속 이전율 직접 입력" />
+              <input type="number" id="slowShiftPctNumber" min="0" max="80" step="1" value="50" data-paired="true" aria-label="완속 이전율 직접 입력" />
               <span>%</span>
             </div>
           </div>
@@ -127,9 +119,9 @@
         <label class="field synced-field">
           <span>급속 이전율</span>
           <div class="range-number-row">
-            <input type="range" id="fastShiftPct" min="0" max="80" step="1" value="40" data-paired="true" aria-label="급속 이전율 슬라이드" />
+            <input type="range" id="fastShiftPct" min="0" max="80" step="1" value="30" data-paired="true" aria-label="급속 이전율 슬라이드" />
             <div class="number-unit">
-              <input type="number" id="fastShiftPctNumber" min="0" max="80" step="1" value="40" data-paired="true" aria-label="급속 이전율 직접 입력" />
+              <input type="number" id="fastShiftPctNumber" min="0" max="80" step="1" value="30" data-paired="true" aria-label="급속 이전율 직접 입력" />
               <span>%</span>
             </div>
           </div>
@@ -209,7 +201,7 @@
   </main>
 
   <footer class="footer">
-    <span>Prototype v2.2 · GitHub Pages 정적 웹앱</span>
+    <span>Prototype v2.3 · GitHub Pages 정적 웹앱</span>
     <span>전력량요금 매출 영향 검토용</span>
   </footer>
 </body>
