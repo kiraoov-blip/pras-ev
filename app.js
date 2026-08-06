@@ -1,4 +1,4 @@
-/* 제주 전기차 시간대 지정 할인요금 매출영향 시뮬레이터
+/* 제주 전기차 시간대 지정 할인요금 매출영향 시뮬레이터 v2.4
    - 전력량요금만 산정
    - 2025년 사용량 × 2026년 전기자동차 충전전력요금
    - 제주 시간대: 경부하 22~08, 중간부하 08~16, 최대부하 16~22
@@ -352,6 +352,10 @@ function computeScenario(controls) {
   let peakScenarioKwh = 0;
   let annualMaxCurrentHourKwh = 0;
   let annualMaxScenarioHourKwh = 0;
+  const participantRateStats = {
+    discount: { kwh: 0, revenue: 0 },
+    outside: { kwh: 0, revenue: 0 }
+  };
 
   for (const rec of records) {
     const tariffKey = getTariffKey(rec, controls);
@@ -450,6 +454,11 @@ function computeScenario(controls) {
         discountKwh += partAfterKwh;
         targetWindowCurrentKwh += kwh;
         targetWindowScenarioKwh += afterKwh;
+        participantRateStats.discount.kwh += partAfterKwh;
+        participantRateStats.discount.revenue += partAfterKwh * nr;
+      } else {
+        participantRateStats.outside.kwh += partAfterKwh;
+        participantRateStats.outside.revenue += partAfterKwh * nr;
       }
     }
   }
@@ -486,7 +495,8 @@ function computeScenario(controls) {
     monthly,
     hourly,
     period,
-    typeTotals
+    typeTotals,
+    participantRateStats
   };
 }
 
@@ -570,6 +580,95 @@ function findRevenueNeutralFixedPrice(controls) {
   };
 }
 
+function calculateRevenueNeutralAdjustment(controls) {
+  const baseControls = { ...controls, nonDiscountAdj: 0 };
+  const baseResult = computeScenario(baseControls);
+  const targetRevenue = baseResult.currentRevenue;
+  const onePointResult = computeScenario({ ...baseControls, nonDiscountAdj: 1 });
+  const revenuePerPctPoint = onePointResult.scenarioRevenue - baseResult.scenarioRevenue;
+  const minAdj = Number($("nonDiscountAdj").min || -30);
+  const maxAdj = Number($("nonDiscountAdj").max || 100);
+
+  if (!Number.isFinite(revenuePerPctPoint) || Math.abs(revenuePerPctPoint) < 0.000001) {
+    return { possible: false, reason: "비할인시간 적용 사용량이 없어 계산할 수 없습니다." };
+  }
+
+  const exactAdj = (targetRevenue - baseResult.scenarioRevenue) / revenuePerPctPoint;
+  if (exactAdj < minAdj || exactAdj > maxAdj) {
+    const boundedAdj = Math.min(maxAdj, Math.max(minAdj, exactAdj));
+    const boundedResult = computeScenario({ ...baseControls, nonDiscountAdj: boundedAdj });
+    return {
+      possible: false,
+      reason: exactAdj < minAdj ? `필요 조정률이 하한 ${number(minAdj, 1)}%보다 낮습니다.` : `필요 조정률이 상한 ${number(maxAdj, 1)}%보다 높습니다.`,
+      exactAdj,
+      roundedAdj: boundedAdj,
+      roundedResult: boundedResult,
+      residualDelta: boundedResult.scenarioRevenue - targetRevenue
+    };
+  }
+
+  const lowerAdj = Math.floor(exactAdj * 10) / 10;
+  const upperAdj = Math.ceil(exactAdj * 10) / 10;
+  const lowerResult = computeScenario({ ...baseControls, nonDiscountAdj: lowerAdj });
+  const upperResult = computeScenario({ ...baseControls, nonDiscountAdj: upperAdj });
+  const lowerGap = Math.abs(lowerResult.scenarioRevenue - targetRevenue);
+  const upperGap = Math.abs(upperResult.scenarioRevenue - targetRevenue);
+  const roundedAdj = lowerGap <= upperGap ? lowerAdj : upperAdj;
+  const roundedResult = lowerGap <= upperGap ? lowerResult : upperResult;
+
+  return {
+    possible: true,
+    exactAdj,
+    roundedAdj,
+    roundedResult,
+    residualDelta: roundedResult.scenarioRevenue - targetRevenue
+  };
+}
+
+function participantAverageRate(result, windowKey) {
+  const stats = result?.participantRateStats?.[windowKey];
+  if (!stats || !Number.isFinite(stats.kwh) || stats.kwh <= 0) return null;
+  return stats.revenue / stats.kwh;
+}
+
+function pricingConditionLabel(controls) {
+  if (controls.pricingMode === "fixed") return `${number(controls.fixedPrice, 1)}원 고정단가`;
+  return `${number(controls.discountPct, 0)}% 할인`;
+}
+
+function renderRateComparison(result) {
+  const neutral = calculateRevenueNeutralAdjustment(result.controls);
+  const currentDiscountRate = participantAverageRate(result, "discount");
+  const currentOutsideRate = participantAverageRate(result, "outside");
+  const neutralResult = neutral.roundedResult;
+  const neutralDiscountRate = neutralResult ? participantAverageRate(neutralResult, "discount") : null;
+  const neutralOutsideRate = neutralResult ? participantAverageRate(neutralResult, "outside") : null;
+  const rateText = (value) => value == null ? "–" : `${number(value, 1)}원`;
+  const condition = pricingConditionLabel(result.controls);
+
+  const neutralFoot = neutral.possible
+    ? `비할인시간 ${formatSignedPctOne(neutral.roundedAdj)} 조정 · 잔여 ${formatSignedWon(neutral.residualDelta)}`
+    : neutral.reason;
+
+  $("rateComparison").innerHTML = `
+    <div class="rate-compare-header">
+      <span>구분</span><span>할인시간대</span><span>할인시간 외</span>
+    </div>
+    <div class="rate-compare-row">
+      <strong>현재 설정안</strong>
+      <b>${rateText(currentDiscountRate)}</b>
+      <b>${rateText(currentOutsideRate)}</b>
+      <em>${condition} · 비할인시간 ${formatSignedPctOne(result.controls.nonDiscountAdj)} 조정 · 매출증감 ${formatSignedWon(result.revenueDelta)}</em>
+    </div>
+    <div class="rate-compare-row neutral">
+      <strong>매출중립안</strong>
+      <b>${rateText(neutralDiscountRate)}</b>
+      <b>${rateText(neutralOutsideRate)}</b>
+      <em>${neutralFoot}</em>
+    </div>
+  `;
+}
+
 function renderNeutralSummary(result) {
   const info = findRevenueNeutralFixedPrice(result.controls);
   lastNeutralInfo = info;
@@ -622,6 +721,7 @@ function update() {
   const controls = getControls();
   lastResult = computeScenario(controls);
   renderKpis(lastResult);
+  renderRateComparison(lastResult);
   renderNeutralSummary(lastResult);
   renderCharts(lastResult);
   renderTables(lastResult);
@@ -750,49 +850,17 @@ function renderHourlyTable(result) {
 }
 
 function setRevenueNeutralAdjustment() {
-  const baseControls = getControls({ nonDiscountAdj: 0 });
-  const baseResult = computeScenario(baseControls);
-  const targetRevenue = baseResult.currentRevenue;
-  const onePointResult = computeScenario({ ...baseControls, nonDiscountAdj: 1 });
-  const revenuePerPctPoint = onePointResult.scenarioRevenue - baseResult.scenarioRevenue;
-
-  if (!Number.isFinite(revenuePerPctPoint) || Math.abs(revenuePerPctPoint) < 0.000001) {
-    alert("비할인시간 적용 사용량이 없어 매출중립 조정률을 계산할 수 없습니다.");
+  const info = calculateRevenueNeutralAdjustment(getControls());
+  if (!info || !Number.isFinite(info.roundedAdj)) {
+    alert(info?.reason || "매출중립 조정률을 계산할 수 없습니다.");
     return;
   }
 
-  let adj = (targetRevenue - baseResult.scenarioRevenue) / revenuePerPctPoint;
-  const minAdj = Number($("nonDiscountAdj").min || -30);
-  const maxAdj = Number($("nonDiscountAdj").max || 100);
-
-  if (adj < minAdj) {
-    $("nonDiscountAdj").value = minAdj;
-    syncOutputs();
-    update();
-    alert(`${compactNumber(minAdj, 2)}% 조정률에서도 현행 매출보다 높아 하한값을 적용했습니다.`);
-    return;
-  }
-  if (adj > maxAdj) {
-    $("nonDiscountAdj").value = maxAdj;
-    syncOutputs();
-    update();
-    alert(`${compactNumber(maxAdj, 2)}% 조정률에서도 매출중립에 도달하지 못해 상한값을 적용했습니다.`);
-    return;
-  }
-
-  // 화면 가독성을 위해 조정률은 0.1%p 단위의 근사값으로 적용함.
-  // 정확한 중립값과 인접한 0.1%p 후보 중 매출차이 절댓값이 작은 값을 선택함.
-  const lowerAdj = Math.floor(adj * 10) / 10;
-  const upperAdj = Math.ceil(adj * 10) / 10;
-  const lowerResult = computeScenario({ ...baseControls, nonDiscountAdj: lowerAdj });
-  const upperResult = computeScenario({ ...baseControls, nonDiscountAdj: upperAdj });
-  const lowerGap = Math.abs(lowerResult.scenarioRevenue - targetRevenue);
-  const upperGap = Math.abs(upperResult.scenarioRevenue - targetRevenue);
-  const roundedAdj = lowerGap <= upperGap ? lowerAdj : upperAdj;
-
-  $("nonDiscountAdj").value = roundedAdj.toFixed(1);
+  $("nonDiscountAdj").value = Number(info.roundedAdj).toFixed(1);
   syncOutputs();
   update();
+
+  if (!info.possible) alert(info.reason);
 }
 
 function downloadHourlyCsv() {
@@ -843,6 +911,11 @@ function formatSignedKwh(value) {
 
 function formatSignedPct(value) {
   return `${value >= 0 ? "+" : ""}${number(value, 2)}%`;
+}
+
+function formatSignedPctOne(value) {
+  const n = Number(value);
+  return `${n > 0 ? "+" : ""}${number(n, 1)}%`;
 }
 
 function compactNumber(value, maxDigits = 6) {
