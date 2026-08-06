@@ -1,4 +1,4 @@
-/* 제주 전기차 시간대 지정 할인요금 매출영향 시뮬레이터 v2.4
+/* 제주 전기차 시간대 지정 할인요금 매출영향 시뮬레이터 v2.5
    - 전력량요금만 산정
    - 2025년 사용량 × 2026년 전기자동차 충전전력요금
    - 제주 시간대: 경부하 22~08, 중간부하 08~16, 최대부하 16~22
@@ -353,8 +353,8 @@ function computeScenario(controls) {
   let annualMaxCurrentHourKwh = 0;
   let annualMaxScenarioHourKwh = 0;
   const participantRateStats = {
-    discount: { kwh: 0, revenue: 0 },
-    outside: { kwh: 0, revenue: 0 }
+    discount: { kwh: 0, revenue: 0, currentRevenue: 0 },
+    outside: { kwh: 0, revenue: 0, currentRevenue: 0 }
   };
 
   for (const rec of records) {
@@ -456,9 +456,11 @@ function computeScenario(controls) {
         targetWindowScenarioKwh += afterKwh;
         participantRateStats.discount.kwh += partAfterKwh;
         participantRateStats.discount.revenue += partAfterKwh * nr;
+        participantRateStats.discount.currentRevenue += partAfterKwh * cr;
       } else {
         participantRateStats.outside.kwh += partAfterKwh;
         participantRateStats.outside.revenue += partAfterKwh * nr;
+        participantRateStats.outside.currentRevenue += partAfterKwh * cr;
       }
     }
   }
@@ -631,6 +633,32 @@ function participantAverageRate(result, windowKey) {
   return stats.revenue / stats.kwh;
 }
 
+function participantCurrentAverageRate(result, windowKey) {
+  const stats = result?.participantRateStats?.[windowKey];
+  if (!stats || !Number.isFinite(stats.kwh) || stats.kwh <= 0) return null;
+  return stats.currentRevenue / stats.kwh;
+}
+
+function tariffRateRange(tariffKey) {
+  const table = RATE_TABLES[tariffKey];
+  if (!table) return null;
+  const values = Object.values(table.season).flatMap((season) => Object.values(season));
+  return { min: Math.min(...values), max: Math.max(...values), label: table.label };
+}
+
+function selectedTariffRangeText(controls) {
+  const items = [];
+  if (controls.filterType === "all" || controls.filterType === "slow") {
+    const range = tariffRateRange(controls.slowTariff);
+    if (range) items.push(`완속 ${range.label} ${number(range.min, 1)}~${number(range.max, 1)}원/kWh`);
+  }
+  if (controls.filterType === "all" || controls.filterType === "fast") {
+    const range = tariffRateRange(controls.fastTariff);
+    if (range) items.push(`급속 ${range.label} ${number(range.min, 1)}~${number(range.max, 1)}원/kWh`);
+  }
+  return items.join(" · ");
+}
+
 function pricingConditionLabel(controls) {
   if (controls.pricingMode === "fixed") return `${number(controls.fixedPrice, 1)}원 고정단가`;
   return `${number(controls.discountPct, 0)}% 할인`;
@@ -638,6 +666,8 @@ function pricingConditionLabel(controls) {
 
 function renderRateComparison(result) {
   const neutral = calculateRevenueNeutralAdjustment(result.controls);
+  const baseDiscountRate = participantCurrentAverageRate(result, "discount");
+  const baseOutsideRate = participantCurrentAverageRate(result, "outside");
   const currentDiscountRate = participantAverageRate(result, "discount");
   const currentOutsideRate = participantAverageRate(result, "outside");
   const neutralResult = neutral.roundedResult;
@@ -645,6 +675,7 @@ function renderRateComparison(result) {
   const neutralOutsideRate = neutralResult ? participantAverageRate(neutralResult, "outside") : null;
   const rateText = (value) => value == null ? "–" : `${number(value, 1)}원`;
   const condition = pricingConditionLabel(result.controls);
+  const tariffRange = selectedTariffRangeText(result.controls);
 
   const neutralFoot = neutral.possible
     ? `비할인시간 ${formatSignedPctOne(neutral.roundedAdj)} 조정 · 잔여 ${formatSignedWon(neutral.residualDelta)}`
@@ -653,6 +684,12 @@ function renderRateComparison(result) {
   $("rateComparison").innerHTML = `
     <div class="rate-compare-header">
       <span>구분</span><span>할인시간대</span><span>할인시간 외</span>
+    </div>
+    <div class="rate-compare-row baseline">
+      <strong>현행요금 환산</strong>
+      <b>${rateText(baseDiscountRate)}</b>
+      <b>${rateText(baseOutsideRate)}</b>
+      <em>동일한 부하이전 후 참여고객 사용량에 현행 TOU와 기존 주말할인을 적용한 가중평균 단가</em>
     </div>
     <div class="rate-compare-row">
       <strong>현재 설정안</strong>
@@ -666,6 +703,7 @@ function renderRateComparison(result) {
       <b>${rateText(neutralOutsideRate)}</b>
       <em>${neutralFoot}</em>
     </div>
+    <div class="rate-source-note"><strong>선택한 현행 요금표 원단가 범위</strong><span>${tariffRange}</span><small>계절·경부하·중간부하·최대부하별 단가이며 기존 주말 50% 할인 적용 전 기준</small></div>
   `;
 }
 
