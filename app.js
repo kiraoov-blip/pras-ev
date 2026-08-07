@@ -1,4 +1,4 @@
-/* PRAS-EV v2.6 — 전기차 요금설계 및 매출영향 분석 시뮬레이터
+/* PRAS-EV v2.7 — 전기차 요금설계 및 매출영향 분석 시뮬레이터
    - 전력량요금만 산정
    - 2025년 사용량 × 2026년 전기자동차 충전전력요금
    - 제주 시간대: 경부하 22~08, 중간부하 08~16, 최대부하 16~22
@@ -115,6 +115,7 @@ let hourlyChart = null;
 let monthlyChart = null;
 let lastResult = null;
 let lastNeutralInfo = null;
+const rawCurrentAvgCache = new Map();
 
 function init() {
   if (!window.EV_USAGE_DATA || !Array.isArray(window.EV_USAGE_DATA.records)) {
@@ -148,8 +149,9 @@ function populateSelects() {
 }
 
 const PAIRED_CONTROLS = [
-  { rangeId: "discountPct", numberId: "discountPctNumber", digits: 0 },
-  { rangeId: "nonDiscountAdj", numberId: "nonDiscountAdjNumber", digits: 1 },
+  { rangeId: "currentTariffAdjPct", numberId: "currentTariffAdjPctNumber", digits: 1, dynamicMax: true },
+  { rangeId: "discountPct", numberId: "discountPctNumber", digits: 1 },
+  { rangeId: "nonDiscountAdj", numberId: "nonDiscountAdjNumber", digits: 1, dynamicMax: true },
   { rangeId: "participation", numberId: "participationNumber", digits: 0 },
   { rangeId: "slowShiftPct", numberId: "slowShiftPctNumber", digits: 0 },
   { rangeId: "fastShiftPct", numberId: "fastShiftPctNumber", digits: 0 }
@@ -177,11 +179,18 @@ function bindPairedControl(config) {
   const range = $(config.rangeId);
   const number = $(config.numberId);
   const min = Number(range.min);
-  const max = Number(range.max);
 
   const refresh = () => {
     updateVisibility();
     update();
+  };
+
+  const ensureDynamicMax = (value) => {
+    if (!config.dynamicMax || !Number.isFinite(value)) return;
+    const currentMax = Number(range.max || 0);
+    if (value <= currentMax) return;
+    const block = value <= 500 ? 50 : value <= 2000 ? 100 : 500;
+    range.max = String(Math.ceil(value / block) * block);
   };
 
   range.addEventListener("input", () => {
@@ -195,13 +204,34 @@ function bindPairedControl(config) {
 
   const applyNumber = () => {
     if (number.value === "" || !Number.isFinite(Number(number.value))) return;
-    const value = Math.min(max, Math.max(min, Number(number.value)));
+    let value = Math.max(min, Number(number.value));
+    const explicitMax = number.hasAttribute("max") ? Number(number.max) : null;
+    if (Number.isFinite(explicitMax)) value = Math.min(explicitMax, value);
+    ensureDynamicMax(value);
+    if (!config.dynamicMax) value = Math.min(Number(range.max), value);
     range.value = String(value);
-    number.value = formatPairedValue(range.value, config.digits);
+    number.value = formatPairedValue(value, config.digits);
     refresh();
   };
   number.addEventListener("input", applyNumber);
   number.addEventListener("change", applyNumber);
+}
+
+function setPairedControlValue(config, value) {
+  const range = $(config.rangeId);
+  const number = $(config.numberId);
+  let v = Number(value);
+  if (!Number.isFinite(v)) return;
+  const min = Number(range.min);
+  v = Math.max(min, v);
+  const explicitMax = number.hasAttribute("max") ? Number(number.max) : null;
+  if (Number.isFinite(explicitMax)) v = Math.min(explicitMax, v);
+  if (config.dynamicMax && v > Number(range.max)) {
+    const block = v <= 500 ? 50 : v <= 2000 ? 100 : 500;
+    range.max = String(Math.ceil(v / block) * block);
+  }
+  range.value = String(v);
+  number.value = formatPairedValue(v, config.digits);
 }
 
 function formatPairedValue(value, digits) {
@@ -223,6 +253,10 @@ function updateVisibility() {
   const mode = $("pricingMode").value;
   $("discountPctWrap").classList.toggle("is-hidden", mode !== "pct");
   $("fixedPriceWrap").classList.toggle("is-hidden", mode !== "fixed");
+
+  const currentMode = $("currentTariffAdjMode").value;
+  $("currentTariffAdjPctWrap").classList.toggle("is-hidden", currentMode !== "pct");
+  $("currentTariffAvgPriceWrap").classList.toggle("is-hidden", currentMode !== "avg");
 }
 
 function getControls(override = {}) {
@@ -231,6 +265,9 @@ function getControls(override = {}) {
     filterType: $("filterType").value,
     slowTariff: $("slowTariff").value,
     fastTariff: $("fastTariff").value,
+    currentTariffAdjMode: $("currentTariffAdjMode").value,
+    currentTariffAdjPct: Number($("currentTariffAdjPct").value),
+    currentTariffAvgPrice: Number($("currentTariffAvgPrice").value),
     applyWeekendDiscount: $("applyWeekendDiscount").checked,
     allowStacking: $("allowStacking").checked,
     discountStart: Number($("discountStart").value),
@@ -290,20 +327,68 @@ function baseRate(record, hour, tariffKey) {
   return RATE_TABLES[tariffKey].season[record.season][period];
 }
 
-function currentRate(record, hour, tariffKey, controls) {
+function rawCurrentRate(record, hour, tariffKey, controls) {
   const b = baseRate(record, hour, tariffKey);
   if (controls.applyWeekendDiscount && weekendDiscountEligible(record, hour)) return b * 0.5;
   return b;
 }
 
+function rawCurrentAnnualAverage(controls) {
+  const cacheKey = [
+    controls.filterType,
+    controls.slowTariff,
+    controls.fastTariff,
+    controls.applyWeekendDiscount ? "1" : "0"
+  ].join("|");
+  if (rawCurrentAvgCache.has(cacheKey)) return rawCurrentAvgCache.get(cacheKey);
+
+  const records = window.EV_USAGE_DATA.records.filter((rec) => controls.filterType === "all" || rec.charge_type === controls.filterType);
+  let kwh = 0;
+  let revenue = 0;
+  for (const rec of records) {
+    const tariffKey = getTariffKey(rec, controls);
+    for (let h = 0; h < 24; h += 1) {
+      const usage = Number(rec.hours[h] || 0);
+      kwh += usage;
+      revenue += usage * rawCurrentRate(rec, h, tariffKey, controls);
+    }
+  }
+  const avg = kwh > 0 ? revenue / kwh : 0;
+  rawCurrentAvgCache.set(cacheKey, avg);
+  return avg;
+}
+
+function resolveCurrentTariffAdjustment(controls) {
+  const originalAvg = rawCurrentAnnualAverage(controls);
+  let scale = 1;
+  if (controls.currentTariffAdjMode === "pct") {
+    scale = Math.max(0, 1 + Number(controls.currentTariffAdjPct || 0) / 100);
+  } else if (controls.currentTariffAdjMode === "avg") {
+    const target = Number(controls.currentTariffAvgPrice || 0);
+    if (originalAvg > 0 && target >= 0) scale = target / originalAvg;
+  }
+  const adjustedAvg = originalAvg * scale;
+  return {
+    originalAvg,
+    adjustedAvg,
+    scale,
+    effectivePct: (scale - 1) * 100
+  };
+}
+
+function currentRate(record, hour, tariffKey, controls) {
+  return rawCurrentRate(record, hour, tariffKey, controls) * (controls.currentTariffScale ?? 1);
+}
+
 function newRate(record, hour, tariffKey, controls) {
-  const b = baseRate(record, hour, tariffKey);
+  const scale = controls.currentTariffScale ?? 1;
+  const b = baseRate(record, hour, tariffKey) * scale;
   const existingWeekend = controls.applyWeekendDiscount && weekendDiscountEligible(record, hour);
   const existingRate = existingWeekend ? b * 0.5 : b;
   const isDiscountHour = inRange(hour, controls.discountStart, controls.discountEnd);
 
   if (!isDiscountHour) {
-    return existingRate * (1 + controls.nonDiscountAdj / 100);
+    return Math.max(0, existingRate * (1 + controls.nonDiscountAdj / 100));
   }
 
   let proposedRate;
@@ -333,6 +418,14 @@ function makeEmptyArray(length, value = 0) {
 }
 
 function computeScenario(controls) {
+  const tariffAdjustment = resolveCurrentTariffAdjustment(controls);
+  controls = {
+    ...controls,
+    currentTariffScale: tariffAdjustment.scale,
+    currentTariffOriginalAvg: tariffAdjustment.originalAvg,
+    currentTariffAdjustedAvg: tariffAdjustment.adjustedAvg,
+    currentTariffEffectivePct: tariffAdjustment.effectivePct
+  };
   const records = window.EV_USAGE_DATA.records.filter((rec) => controls.filterType === "all" || rec.charge_type === controls.filterType);
   const monthly = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, currentRevenue: 0, scenarioRevenue: 0, currentKwh: 0, scenarioKwh: 0 }));
   const hourly = Array.from({ length: 24 }, (_, h) => ({ hour: h, currentKwh: 0, scenarioKwh: 0, currentRevenue: 0, scenarioRevenue: 0 }));
@@ -510,8 +603,67 @@ function scenarioWithFixedPrice(controls, fixedPrice) {
 function findRevenueNeutralFixedPrice(controls) {
   const baseControls = { ...controls, pricingMode: "fixed" };
   const targetRevenue = computeScenario(baseControls).currentRevenue;
-  const f = (price) => scenarioWithFixedPrice(baseControls, price).scenarioRevenue - targetRevenue;
+  const fixedResult = scenarioWithFixedPrice(baseControls, Number(controls.fixedPrice || 0));
 
+  const finalize = (price, exactResult = null) => {
+    const floorPrice = Math.max(0, Math.floor(price * 10) / 10);
+    const ceilPrice = Math.ceil(price * 10) / 10;
+    const floorResult = scenarioWithFixedPrice(baseControls, floorPrice);
+    const ceilResult = Math.abs(ceilPrice - floorPrice) < 0.0000001 ? floorResult : scenarioWithFixedPrice(baseControls, ceilPrice);
+    const floorDelta = Math.abs(floorResult.scenarioRevenue - targetRevenue);
+    const ceilDelta = Math.abs(ceilResult.scenarioRevenue - targetRevenue);
+    const roundedPrice = floorDelta <= ceilDelta ? floorPrice : ceilPrice;
+    const roundedResult = floorDelta <= ceilDelta ? floorResult : ceilResult;
+    const plusTenthResult = scenarioWithFixedPrice(baseControls, roundedPrice + 0.1);
+    return {
+      possible: true,
+      targetRevenue,
+      price,
+      floorPrice,
+      ceilPrice,
+      roundedPrice,
+      roundedDelta: roundedResult.scenarioRevenue - targetRevenue,
+      tenthWonImpact: plusTenthResult.scenarioRevenue - roundedResult.scenarioRevenue,
+      fixedResult,
+      exactResult
+    };
+  };
+
+  // 주말할인 중복 허용 시 고정단가와 매출은 선형관계이므로 두 점만으로 정확히 계산 가능
+  if (baseControls.allowStacking || !baseControls.applyWeekendDiscount) {
+    const zeroResult = scenarioWithFixedPrice(baseControls, 0);
+    const oneResult = scenarioWithFixedPrice(baseControls, 1);
+    const slope = oneResult.scenarioRevenue - zeroResult.scenarioRevenue;
+    if (!Number.isFinite(slope) || Math.abs(slope) < 0.000001) {
+      return {
+        possible: false,
+        reason: "할인시간대 적용 사용량이 없어 계산할 수 없습니다.",
+        targetRevenue,
+        price: 0,
+        roundedPrice: 0,
+        roundedDelta: zeroResult.scenarioRevenue - targetRevenue,
+        tenthWonImpact: 0,
+        fixedResult
+      };
+    }
+    const price = (targetRevenue - zeroResult.scenarioRevenue) / slope;
+    if (price < 0) {
+      return {
+        possible: false,
+        reason: "0원/kWh에서도 현행 매출을 초과합니다.",
+        targetRevenue,
+        price: 0,
+        roundedPrice: 0,
+        roundedDelta: zeroResult.scenarioRevenue - targetRevenue,
+        tenthWonImpact: scenarioWithFixedPrice(baseControls, 0.1).scenarioRevenue - zeroResult.scenarioRevenue,
+        fixedResult
+      };
+    }
+    return finalize(price);
+  }
+
+  // 중복 미허용은 기존 주말할인과의 min() 때문에 구간별 선형이므로 이분법 사용
+  const f = (price) => scenarioWithFixedPrice(baseControls, price).scenarioRevenue - targetRevenue;
   let lo = 0;
   let hi = 500;
   let flo = f(lo);
@@ -532,7 +684,7 @@ function findRevenueNeutralFixedPrice(controls) {
       roundedPrice: 0,
       roundedDelta: zeroResult.scenarioRevenue - targetRevenue,
       tenthWonImpact: scenarioWithFixedPrice(baseControls, 0.1).scenarioRevenue - zeroResult.scenarioRevenue,
-      fixedResult: scenarioWithFixedPrice(baseControls, Number(controls.fixedPrice || 0))
+      fixedResult
     };
   }
 
@@ -546,40 +698,18 @@ function findRevenueNeutralFixedPrice(controls) {
       roundedPrice: hi,
       roundedDelta: highResult.scenarioRevenue - targetRevenue,
       tenthWonImpact: scenarioWithFixedPrice(baseControls, hi + 0.1).scenarioRevenue - highResult.scenarioRevenue,
-      fixedResult: scenarioWithFixedPrice(baseControls, Number(controls.fixedPrice || 0))
+      fixedResult
     };
   }
 
-  for (let i = 0; i < 60; i += 1) {
+  for (let i = 0; i < 20; i += 1) {
     const mid = (lo + hi) / 2;
     const fm = f(mid);
     if (fm < 0) lo = mid;
     else hi = mid;
   }
 
-  const price = (lo + hi) / 2;
-  const floorPrice = Math.max(0, Math.floor(price * 10) / 10);
-  const ceilPrice = Math.ceil(price * 10) / 10;
-  const floorResult = scenarioWithFixedPrice(baseControls, floorPrice);
-  const ceilResult = scenarioWithFixedPrice(baseControls, ceilPrice);
-  const floorDelta = Math.abs(floorResult.scenarioRevenue - targetRevenue);
-  const ceilDelta = Math.abs(ceilResult.scenarioRevenue - targetRevenue);
-  const roundedPrice = floorDelta <= ceilDelta ? floorPrice : ceilPrice;
-  const roundedResult = Math.abs(roundedPrice - floorPrice) < 0.0000001 ? floorResult : ceilResult;
-  const plusTenthResult = scenarioWithFixedPrice(baseControls, roundedPrice + 0.1);
-  const fixedResult = scenarioWithFixedPrice(baseControls, Number(controls.fixedPrice || 0));
-
-  return {
-    possible: true,
-    targetRevenue,
-    price,
-    floorPrice,
-    ceilPrice,
-    roundedPrice,
-    roundedDelta: roundedResult.scenarioRevenue - targetRevenue,
-    tenthWonImpact: plusTenthResult.scenarioRevenue - roundedResult.scenarioRevenue,
-    fixedResult
-  };
+  return finalize((lo + hi) / 2);
 }
 
 function calculateRevenueNeutralAdjustment(controls) {
@@ -588,22 +718,20 @@ function calculateRevenueNeutralAdjustment(controls) {
   const targetRevenue = baseResult.currentRevenue;
   const onePointResult = computeScenario({ ...baseControls, nonDiscountAdj: 1 });
   const revenuePerPctPoint = onePointResult.scenarioRevenue - baseResult.scenarioRevenue;
-  const minAdj = Number($("nonDiscountAdj").min || -30);
-  const maxAdj = Number($("nonDiscountAdj").max || 100);
+  const minAdj = -100;
 
   if (!Number.isFinite(revenuePerPctPoint) || Math.abs(revenuePerPctPoint) < 0.000001) {
     return { possible: false, reason: "비할인시간 적용 사용량이 없어 계산할 수 없습니다." };
   }
 
   const exactAdj = (targetRevenue - baseResult.scenarioRevenue) / revenuePerPctPoint;
-  if (exactAdj < minAdj || exactAdj > maxAdj) {
-    const boundedAdj = Math.min(maxAdj, Math.max(minAdj, exactAdj));
-    const boundedResult = computeScenario({ ...baseControls, nonDiscountAdj: boundedAdj });
+  if (exactAdj < minAdj) {
+    const boundedResult = computeScenario({ ...baseControls, nonDiscountAdj: minAdj });
     return {
       possible: false,
-      reason: exactAdj < minAdj ? `필요 조정률이 하한 ${number(minAdj, 1)}%보다 낮습니다.` : `필요 조정률이 상한 ${number(maxAdj, 1)}%보다 높습니다.`,
+      reason: `필요 조정률이 하한 ${number(minAdj, 1)}%보다 낮습니다.`,
       exactAdj,
-      roundedAdj: boundedAdj,
+      roundedAdj: minAdj,
       roundedResult: boundedResult,
       residualDelta: boundedResult.scenarioRevenue - targetRevenue
     };
@@ -648,20 +776,48 @@ function tariffRateRange(tariffKey) {
 
 function selectedTariffRangeText(controls) {
   const items = [];
+  const scale = controls.currentTariffScale ?? 1;
+  const rangeText = (prefix, range) => {
+    const original = `${number(range.min, 1)}~${number(range.max, 1)}원/kWh`;
+    if (Math.abs(scale - 1) < 0.0000001) return `${prefix} ${range.label} ${original}`;
+    return `${prefix} ${range.label} ${original} → 조정 후 ${number(range.min * scale, 1)}~${number(range.max * scale, 1)}원/kWh`;
+  };
   if (controls.filterType === "all" || controls.filterType === "slow") {
     const range = tariffRateRange(controls.slowTariff);
-    if (range) items.push(`완속 ${range.label} ${number(range.min, 1)}~${number(range.max, 1)}원/kWh`);
+    if (range) items.push(rangeText("완속", range));
   }
   if (controls.filterType === "all" || controls.filterType === "fast") {
     const range = tariffRateRange(controls.fastTariff);
-    if (range) items.push(`급속 ${range.label} ${number(range.min, 1)}~${number(range.max, 1)}원/kWh`);
+    if (range) items.push(rangeText("급속", range));
   }
   return items.join(" · ");
 }
 
+function currentTariffAdjustmentLabel(controls) {
+  if (controls.currentTariffAdjMode === "pct") {
+    return `현행요금 ${formatSignedPctOne(controls.currentTariffEffectivePct)} 조정`;
+  }
+  if (controls.currentTariffAdjMode === "avg") {
+    return `현행 연평균 ${number(controls.currentTariffAdjustedAvg, 1)}원/kWh 직접 입력`;
+  }
+  return "현행 요금표 기준";
+}
+
+function renderCurrentTariffSummary(result) {
+  const c = result.controls;
+  const original = c.currentTariffOriginalAvg;
+  const adjusted = c.currentTariffAdjustedAvg;
+  $("currentTariffSummary").innerHTML = `
+    <div><span>원기준 연평균</span><strong>${number(original, 1)}원/kWh</strong></div>
+    <div><span>조정 후 연평균</span><strong>${number(adjusted, 1)}원/kWh</strong></div>
+    <div><span>환산 조정률</span><strong>${formatSignedPctOne(c.currentTariffEffectivePct)}</strong></div>
+    <small>선택한 현행요금과 2025년 실제 사용패턴 기준 · 직접 단가 입력 시 TOU 구조는 비례 유지</small>
+  `;
+}
+
 function pricingConditionLabel(controls) {
   if (controls.pricingMode === "fixed") return `${number(controls.fixedPrice, 1)}원 고정단가`;
-  return `${number(controls.discountPct, 0)}% 할인`;
+  return `${number(controls.discountPct, 1)}% 할인`;
 }
 
 function renderRateComparison(result) {
@@ -689,7 +845,7 @@ function renderRateComparison(result) {
       <strong>현행요금 환산</strong>
       <b>${rateText(baseDiscountRate)}</b>
       <b>${rateText(baseOutsideRate)}</b>
-      <em>동일한 부하이전 후 참여고객 사용량에 현행 TOU와 기존 주말할인을 적용한 가중평균 단가</em>
+      <em>동일한 부하이전 후 참여고객 사용량 기준 · ${currentTariffAdjustmentLabel(result.controls)} · 기존 주말할인 반영</em>
     </div>
     <div class="rate-compare-row">
       <strong>현재 설정안</strong>
@@ -756,8 +912,17 @@ function applyRevenueNeutralFixedPrice() {
 }
 
 function update() {
-  const controls = getControls();
+  let controls = getControls();
+  if (controls.currentTariffAdjMode !== "avg") {
+    const rawAvg = rawCurrentAnnualAverage(controls);
+    const previewScale = controls.currentTariffAdjMode === "pct"
+      ? Math.max(0, 1 + Number(controls.currentTariffAdjPct || 0) / 100)
+      : 1;
+    if (Number.isFinite(rawAvg)) $("currentTariffAvgPrice").value = Number(rawAvg * previewScale).toFixed(1);
+    controls = getControls();
+  }
   lastResult = computeScenario(controls);
+  renderCurrentTariffSummary(lastResult);
   renderKpis(lastResult);
   renderRateComparison(lastResult);
   renderNeutralSummary(lastResult);
@@ -894,8 +1059,8 @@ function setRevenueNeutralAdjustment() {
     return;
   }
 
-  $("nonDiscountAdj").value = Number(info.roundedAdj).toFixed(1);
-  syncOutputs();
+  const config = PAIRED_CONTROLS.find((item) => item.rangeId === "nonDiscountAdj");
+  setPairedControlValue(config, info.roundedAdj);
   update();
 
   if (!info.possible) alert(info.reason);

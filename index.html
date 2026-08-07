@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>PRAS - EV</title>
+  <title>PRAS-EV</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js" defer></script>
   <script src="data/ev_usage_2025.js" defer></script>
@@ -37,6 +37,32 @@
           <span>급속 현행 요금</span>
           <select id="fastTariff"></select>
         </label>
+        <label class="field">
+          <span>현행요금 조정 방식</span>
+          <select id="currentTariffAdjMode">
+            <option value="none">조정 없음</option>
+            <option value="pct">요금표 일괄 조정률(%)</option>
+            <option value="avg">연평균 단가 직접 입력</option>
+          </select>
+        </label>
+        <label class="field synced-field is-hidden" id="currentTariffAdjPctWrap">
+          <span>현행요금 조정률</span>
+          <div class="range-number-row">
+            <input type="range" id="currentTariffAdjPct" min="-100" max="200" step="0.1" value="0.0" data-paired="true" aria-label="현행요금 조정률 슬라이드" />
+            <div class="number-unit">
+              <input type="number" id="currentTariffAdjPctNumber" min="-100" step="0.1" value="0.0" data-paired="true" aria-label="현행요금 조정률 직접 입력" />
+              <span>%</span>
+            </div>
+          </div>
+          <small class="field-help">직접 입력값에 따라 슬라이더 상한 자동 확장</small>
+        </label>
+        <label class="field with-output is-hidden" id="currentTariffAvgPriceWrap">
+          <span>조정 후 현행 연평균 단가</span>
+          <input type="number" id="currentTariffAvgPrice" min="0" step="0.1" value="0.0" />
+          <output>원/kWh</output>
+          <small class="field-help full-span">기존 TOU 시간대별 상대구조를 유지하면서 전체 단가를 비례 조정</small>
+        </label>
+        <div id="currentTariffSummary" class="current-rate-summary"></div>
         <div class="inline-checks">
           <label><input type="checkbox" id="applyWeekendDiscount" checked /> 봄·가을 주말 11~14시 50% 할인 반영</label>
           <label><input type="checkbox" id="allowStacking" checked /> 신규 할인과 기존 주말할인 중복 허용</label>
@@ -65,9 +91,9 @@
         <label class="field synced-field" id="discountPctWrap">
           <span>할인율</span>
           <div class="range-number-row">
-            <input type="range" id="discountPct" min="0" max="90" step="1" value="70" data-paired="true" aria-label="할인율 슬라이드" />
+            <input type="range" id="discountPct" min="0" max="90" step="0.1" value="70.0" data-paired="true" aria-label="할인율 슬라이드" />
             <div class="number-unit">
-              <input type="number" id="discountPctNumber" min="0" max="90" step="1" value="70" data-paired="true" aria-label="할인율 직접 입력" />
+              <input type="number" id="discountPctNumber" min="0" max="90" step="0.1" value="70.0" data-paired="true" aria-label="할인율 직접 입력" />
               <span>%</span>
             </div>
           </div>
@@ -80,12 +106,13 @@
         <label class="field synced-field">
           <span>할인시간 외 단가 조정률</span>
           <div class="range-number-row">
-            <input type="range" id="nonDiscountAdj" min="-30" max="100" step="0.1" value="0.0" data-paired="true" aria-label="할인시간 외 단가 조정률 슬라이드" />
+            <input type="range" id="nonDiscountAdj" min="-100" max="200" step="0.1" value="0.0" data-paired="true" aria-label="할인시간 외 단가 조정률 슬라이드" />
             <div class="number-unit">
-              <input type="number" id="nonDiscountAdjNumber" min="-30" max="100" step="0.1" value="0.0" data-paired="true" aria-label="할인시간 외 단가 조정률 직접 입력" />
+              <input type="number" id="nonDiscountAdjNumber" min="-100" step="0.1" value="0.0" data-paired="true" aria-label="할인시간 외 단가 조정률 직접 입력" />
               <span>%</span>
             </div>
           </div>
+          <small class="field-help">상한 제한 없음 · 직접 입력값에 따라 슬라이더 상한 자동 확장</small>
         </label>
         <label class="field synced-field">
           <span>요금제 참여율</span>
@@ -211,7 +238,7 @@
   </main>
 
   <footer class="footer">
-    <span>PRAS-EV v2.6 · GitHub Pages 정적 웹앱</span>
+    <span>PRAS-EV v2.7 · GitHub Pages 정적 웹앱</span>
     <span>전력량요금 매출 영향 검토용</span>
   </footer>
 </body>
