@@ -1,4 +1,4 @@
-/* PRAS-EV v2.7 — 전기차 요금설계 및 매출영향 분석 시뮬레이터
+/* PRAS-EV v2.8 — 전기차 요금설계 및 매출영향 분석 시뮬레이터
    - 전력량요금만 산정
    - 2025년 사용량 × 2026년 전기자동차 충전전력요금
    - 제주 시간대: 경부하 22~08, 중간부하 08~16, 최대부하 16~22
@@ -930,14 +930,107 @@ function update() {
   renderTables(lastResult);
 }
 
+function scenarioRevenueAtCurrentTariffScale(controls, scale) {
+  const boundedScale = Math.max(0, Number(scale || 0));
+  const pct = (boundedScale - 1) * 100;
+  const scenario = computeScenario({
+    ...controls,
+    currentTariffAdjMode: "pct",
+    currentTariffAdjPct: pct
+  });
+  return scenario.scenarioRevenue;
+}
+
+function findCurrentTariffRevenueRecovery(result) {
+  const controls = result.controls;
+  const targetRevenue = result.currentRevenue;
+  const currentScenarioRevenue = result.scenarioRevenue;
+  const currentScale = Number(controls.currentTariffScale || 0);
+  const rawAverage = Number(controls.currentTariffOriginalAvg || 0);
+
+  if (!Number.isFinite(targetRevenue) || targetRevenue <= 0 || !Number.isFinite(rawAverage) || rawAverage <= 0) {
+    return { possible: false, reason: "기준매출 또는 현행 평균단가가 없어 계산할 수 없습니다." };
+  }
+
+  // 정률 할인 모드에서는 신규요금 매출도 현행 요금표 스케일에 정확히 비례함.
+  if (controls.pricingMode === "pct") {
+    if (!Number.isFinite(currentScenarioRevenue) || currentScenarioRevenue <= 0 || currentScale <= 0) {
+      return { possible: false, reason: "신규요금 매출이 0이어서 필요 단가를 계산할 수 없습니다." };
+    }
+    const requiredScale = currentScale * (targetRevenue / currentScenarioRevenue);
+    const requiredAverage = rawAverage * requiredScale;
+    const totalPct = (requiredScale - 1) * 100;
+    const additionalPct = (requiredScale / currentScale - 1) * 100;
+    return {
+      possible: true,
+      targetRevenue,
+      requiredScale,
+      requiredAverage,
+      totalPct,
+      additionalPct,
+      recoveredScenarioRevenue: targetRevenue
+    };
+  }
+
+  // 고정단가 모드는 할인시간대 단가가 현행요금 스케일과 독립적일 수 있어 수치적으로 해를 탐색함.
+  const revenueAt = (scale) => scenarioRevenueAtCurrentTariffScale(controls, scale);
+  let lo = 0;
+  let hi = Math.max(1, currentScale || 1);
+  let revHi = revenueAt(hi);
+  let guard = 0;
+  while (revHi < targetRevenue && guard < 40) {
+    hi *= 2;
+    revHi = revenueAt(hi);
+    guard += 1;
+  }
+  if (!Number.isFinite(revHi) || revHi < targetRevenue) {
+    return { possible: false, reason: "현행요금 인상만으로 기준매출 보전 수준을 찾지 못했습니다." };
+  }
+
+  for (let i = 0; i < 42; i += 1) {
+    const mid = (lo + hi) / 2;
+    const rev = revenueAt(mid);
+    if (rev >= targetRevenue) hi = mid;
+    else lo = mid;
+  }
+  const requiredScale = (lo + hi) / 2;
+  const requiredAverage = rawAverage * requiredScale;
+  const totalPct = (requiredScale - 1) * 100;
+  const additionalPct = currentScale > 0 ? (requiredScale / currentScale - 1) * 100 : null;
+  return {
+    possible: true,
+    targetRevenue,
+    requiredScale,
+    requiredAverage,
+    totalPct,
+    additionalPct,
+    recoveredScenarioRevenue: revenueAt(requiredScale)
+  };
+}
+
 function renderKpis(result) {
   const deltaClass = result.revenueDelta >= 0 ? "positive" : "negative";
   const revenuePct = result.currentRevenue ? result.revenueDelta / result.currentRevenue * 100 : 0;
   const peakPct = result.peakCurrentKwh ? result.peakDelta / result.peakCurrentKwh * 100 : 0;
   const targetPct = result.targetWindowCurrentKwh ? result.targetWindowDelta / result.targetWindowCurrentKwh * 100 : 0;
+  const recovery = findCurrentTariffRevenueRecovery(result);
+  const recoveryCard = recovery.possible
+    ? {
+        label: "기준매출 보전 필요 현행 평균단가",
+        value: `${number(recovery.requiredAverage, 1)}원/kWh`,
+        sub: `원요금 대비 ${formatSignedPctOne(recovery.totalPct)} · 현재 설정 대비 ${formatSignedPctOne(recovery.additionalPct)} · ${formatWon(recovery.targetRevenue)} 보전`,
+        cls: "recovery"
+      }
+    : {
+        label: "기준매출 보전 필요 현행 평균단가",
+        value: "계산 불가",
+        sub: recovery.reason,
+        cls: "recovery"
+      };
   const cards = [
     { label: "현행 전력량요금 매출", value: formatWon(result.currentRevenue), sub: `${formatKwh(result.currentKwh)} · 기본요금 제외` },
     { label: "신규요금 적용 후 매출", value: formatWon(result.scenarioRevenue), sub: `${formatKwh(result.scenarioKwh)} · 참여율 ${Math.round(result.controls.participation * 100)}%` },
+    recoveryCard,
     { label: "매출 증감", value: `${result.revenueDelta >= 0 ? "+" : ""}${formatWon(result.revenueDelta)}`, sub: `${formatSignedPct(revenuePct)} · 현행 대비`, cls: `delta ${deltaClass}` },
     { label: "할인 적용 사용량", value: formatKwh(result.discountKwh), sub: `${timeRangeText(result.controls.discountStart, result.controls.discountEnd)} 참여고객 기준` },
     { label: "부하 이전량", value: formatKwh(result.shiftedKwh), sub: `완속 ${Math.round(result.controls.slowShiftPct*100)}% · 급속 ${Math.round(result.controls.fastShiftPct*100)}%` },

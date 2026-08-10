@@ -99,7 +99,7 @@ input[type="range"]{width:100%;accent-color:var(--accent)}
 .secondary-btn.small{width:auto;padding:8px 10px;font-size:12px}
 .is-hidden{display:none!important}
 .workspace{display:flex;flex-direction:column;gap:18px;min-width:0}
-.kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.kpi-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
 .kpi{
   background:var(--card);
   border:1px solid var(--line);
@@ -113,6 +113,8 @@ input[type="range"]{width:100%;accent-color:var(--accent)}
 .kpi .sub{font-size:12px;color:#64748b;line-height:1.35}
 .kpi.delta.positive .value{color:var(--good)}
 .kpi.delta.negative .value{color:var(--bad)}
+.kpi.recovery{background:var(--soft);border-color:#b7d4ff}
+.kpi.recovery .value{color:var(--accent-dark)}
 .neutral-card{background:#fbfdff}
 .neutral-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 .neutral-item{
