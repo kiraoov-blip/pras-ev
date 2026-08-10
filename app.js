@@ -1,4 +1,4 @@
-/* PRAS-EV v2.8 — 전기차 요금설계 및 매출영향 분석 시뮬레이터
+/* PRAS-EV v2.9 — 전기차 요금설계 및 매출영향 분석 시뮬레이터
    - 전력량요금만 산정
    - 2025년 사용량 × 2026년 전기자동차 충전전력요금
    - 제주 시간대: 경부하 22~08, 중간부하 08~16, 최대부하 16~22
@@ -116,16 +116,37 @@ let monthlyChart = null;
 let lastResult = null;
 let lastNeutralInfo = null;
 const rawCurrentAvgCache = new Map();
+const smpByDate = new Map();
 
 function init() {
   if (!window.EV_USAGE_DATA || !Array.isArray(window.EV_USAGE_DATA.records)) {
     document.body.innerHTML = "<main class='card' style='margin:20px'>사용량 데이터가 로드되지 않았습니다. data/ev_usage_2025.js 파일을 확인하십시오.</main>";
     return;
   }
+  if (!window.JEJU_SMP_2025 || !Array.isArray(window.JEJU_SMP_2025.records)) {
+    document.body.innerHTML = "<main class='card' style='margin:20px'>제주 SMP 데이터가 로드되지 않았습니다. data/smp_jeju_2025.js 파일을 확인하십시오.</main>";
+    return;
+  }
+  buildSmpIndex();
   populateSelects();
   bindEvents();
   updateVisibility();
   update();
+}
+
+function buildSmpIndex() {
+  smpByDate.clear();
+  window.JEJU_SMP_2025.records.forEach((rec) => {
+    if (!rec || !rec.date_key || !Array.isArray(rec.hours) || rec.hours.length < 24) return;
+    smpByDate.set(String(rec.date_key), rec.hours.map((v) => Number(v)));
+  });
+}
+
+function smpRate(dateKey, hour) {
+  const hours = smpByDate.get(String(dateKey));
+  if (!hours || hour < 0 || hour >= 24) return null;
+  const value = Number(hours[hour]);
+  return Number.isFinite(value) ? value : null;
 }
 
 function populateSelects() {
@@ -445,6 +466,9 @@ function computeScenario(controls) {
   let peakScenarioKwh = 0;
   let annualMaxCurrentHourKwh = 0;
   let annualMaxScenarioHourKwh = 0;
+  let currentPurchaseCost = 0;
+  let scenarioPurchaseCost = 0;
+  let missingSmpHours = 0;
   const participantRateStats = {
     discount: { kwh: 0, revenue: 0, currentRevenue: 0 },
     outside: { kwh: 0, revenue: 0, currentRevenue: 0 }
@@ -514,6 +538,13 @@ function computeScenario(controls) {
       const partKwh = participant[h];
       const partAfterKwh = participantAfter[h];
       const afterKwh = totalAfter[h];
+      const smp = smpRate(rec.date_key, h);
+      if (smp == null) {
+        missingSmpHours += 1;
+      } else {
+        currentPurchaseCost += kwh * smp;
+        scenarioPurchaseCost += afterKwh * smp;
+      }
       const curRev = kwh * cr;
       const noShiftRev = nonKwh * cr + partKwh * nr;
       const scenRev = nonKwh * cr + partAfterKwh * nr;
@@ -587,6 +618,10 @@ function computeScenario(controls) {
     peakDelta: peakScenarioKwh - peakCurrentKwh,
     annualMaxCurrentHourKwh,
     annualMaxScenarioHourKwh,
+    currentPurchaseCost,
+    scenarioPurchaseCost,
+    purchaseCostDelta: scenarioPurchaseCost - currentPurchaseCost,
+    missingSmpHours,
     monthly,
     hourly,
     period,
@@ -924,6 +959,7 @@ function update() {
   lastResult = computeScenario(controls);
   renderCurrentTariffSummary(lastResult);
   renderKpis(lastResult);
+  renderSmpPurchaseImpact(lastResult);
   renderRateComparison(lastResult);
   renderNeutralSummary(lastResult);
   renderCharts(lastResult);
@@ -1043,6 +1079,43 @@ function renderKpis(result) {
       <div class="label">${card.label}</div>
       <div class="value">${card.value}</div>
       <div class="sub">${card.sub}</div>
+    </article>
+  `).join("");
+}
+
+function renderSmpPurchaseImpact(result) {
+  const delta = result.purchaseCostDelta;
+  const pct = result.currentPurchaseCost ? delta / result.currentPurchaseCost * 100 : 0;
+  const perShiftKwh = result.shiftedKwh ? delta / result.shiftedKwh : 0;
+  const deltaClass = delta <= 0 ? "positive" : "negative";
+  const missingNote = result.missingSmpHours > 0
+    ? ` · SMP 누락 ${number(result.missingSmpHours, 0)}건`
+    : "";
+
+  const items = [
+    {
+      label: "기준안 SMP 기반 구입비",
+      value: formatWon(result.currentPurchaseCost),
+      sub: `2025 제주 SMP × 기준 시간대별 사용량${missingNote}`
+    },
+    {
+      label: "신규요금 SMP 기반 구입비",
+      value: formatWon(result.scenarioPurchaseCost),
+      sub: `부하이전 후 사용량 × 동일 시간대 SMP${missingNote}`
+    },
+    {
+      label: "SMP 기반 구입비 영향",
+      value: formatSignedWon(delta),
+      sub: `${formatSignedPct(pct)} · 이전 1kWh당 ${formatSignedUnitPrice(perShiftKwh)} · 비용 감소(-) / 증가(+)`,
+      cls: `delta ${deltaClass}`
+    }
+  ];
+
+  $("smpGrid").innerHTML = items.map((item) => `
+    <article class="smp-item ${item.cls || ""}">
+      <span>${item.label}</span>
+      <strong>${item.value}</strong>
+      <em>${item.sub}</em>
     </article>
   `).join("");
 }
@@ -1192,6 +1265,12 @@ function formatWon(value) {
 
 function formatSignedWon(value) {
   return `${value >= 0 ? "+" : ""}${formatWon(value)}`;
+}
+
+function formatSignedUnitPrice(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "–";
+  return `${n >= 0 ? "+" : ""}${number(n, 2)}원/kWh`;
 }
 
 function formatKwh(value) {
