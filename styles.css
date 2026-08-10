@@ -157,6 +157,11 @@ th:first-child,td:first-child{text-align:left}
 th{position:sticky;top:0;background:#f8fafc;color:#475569;font-size:12px;z-index:1}
 tbody tr:hover{background:#f8fbff}
 .footer{display:flex;justify-content:space-between;gap:16px;padding:18px 26px 28px;color:#64748b;font-size:12px}
+
+.smp-chart-block{margin-top:18px;padding-top:16px;border-top:1px solid #e2e8f0}
+.smp-chart-title{margin-bottom:10px}
+.smp-chart-title h3{margin:0;font-size:15px}
+.smp-formula{margin:8px 0 0;font-size:11px}
 @media (max-width:1180px){
   .layout{grid-template-columns:1fr}
   .control-panel{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}

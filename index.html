@@ -193,6 +193,14 @@
           <span class="muted">2025년 제주 시간대별 SMP 고정 · 부하이전에 따른 SMP 자체 변화 없음</span>
         </div>
         <div class="smp-grid" id="smpGrid"></div>
+        <div class="smp-chart-block">
+          <div class="card-title-row smp-chart-title">
+            <h3>시간대별 사용량 가중평균 SMP</h3>
+            <span class="muted">2025년 실제 SMP는 고정 · 기준안/신규요금의 시간대별 사용량 가중치만 변경</span>
+          </div>
+          <canvas id="smpHourlyChart" height="105"></canvas>
+          <p class="muted smp-formula">각 시간대 가중평균 SMP = Σ(해당 시각의 일별 사용량 × 일별 SMP) ÷ Σ(해당 시각의 일별 사용량)</p>
+        </div>
       </section>
 
       <section class="card neutral-card" aria-label="매출중립 단가 분석">
@@ -248,7 +256,7 @@
   </main>
 
   <footer class="footer">
-    <span>PRAS-EV v2.9 · GitHub Pages 정적 웹앱</span>
+    <span>PRAS-EV v2.10 · GitHub Pages 정적 웹앱</span>
     <span>전력량요금 매출 영향 검토용</span>
   </footer>
 </body>

@@ -113,6 +113,7 @@ const TYPE_LABEL = { all: "전체", slow: "완속", fast: "급속" };
 const $ = (id) => document.getElementById(id);
 let hourlyChart = null;
 let monthlyChart = null;
+let smpHourlyChart = null;
 let lastResult = null;
 let lastNeutralInfo = null;
 const rawCurrentAvgCache = new Map();
@@ -449,7 +450,7 @@ function computeScenario(controls) {
   };
   const records = window.EV_USAGE_DATA.records.filter((rec) => controls.filterType === "all" || rec.charge_type === controls.filterType);
   const monthly = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, currentRevenue: 0, scenarioRevenue: 0, currentKwh: 0, scenarioKwh: 0 }));
-  const hourly = Array.from({ length: 24 }, (_, h) => ({ hour: h, currentKwh: 0, scenarioKwh: 0, currentRevenue: 0, scenarioRevenue: 0 }));
+  const hourly = Array.from({ length: 24 }, (_, h) => ({ hour: h, currentKwh: 0, scenarioKwh: 0, currentRevenue: 0, scenarioRevenue: 0, currentSmpCost: 0, scenarioSmpCost: 0, currentSmpKwh: 0, scenarioSmpKwh: 0 }));
   const period = blankPeriodStats();
   const typeTotals = { slow: { kwh: 0, scenarioKwh: 0, shifted: 0 }, fast: { kwh: 0, scenarioKwh: 0, shifted: 0 } };
 
@@ -544,6 +545,10 @@ function computeScenario(controls) {
       } else {
         currentPurchaseCost += kwh * smp;
         scenarioPurchaseCost += afterKwh * smp;
+        hourly[h].currentSmpCost += kwh * smp;
+        hourly[h].scenarioSmpCost += afterKwh * smp;
+        hourly[h].currentSmpKwh += kwh;
+        hourly[h].scenarioSmpKwh += afterKwh;
       }
       const curRev = kwh * cr;
       const noShiftRev = nonKwh * cr + partKwh * nr;
@@ -594,6 +599,8 @@ function computeScenario(controls) {
   hourly.forEach((row) => {
     row.avgCurrentKwh = row.currentKwh / dayCount;
     row.avgScenarioKwh = row.scenarioKwh / dayCount;
+    row.currentWeightedSmp = row.currentSmpKwh > 0 ? row.currentSmpCost / row.currentSmpKwh : null;
+    row.scenarioWeightedSmp = row.scenarioSmpKwh > 0 ? row.scenarioSmpCost / row.scenarioSmpKwh : null;
   });
 
   return {
@@ -1128,6 +1135,26 @@ function renderCharts(result) {
   const monthLabels = result.monthly.map(row => `${row.month}월`);
   const currentMonthly = result.monthly.map(row => round(row.currentRevenue / 100000000, 3));
   const scenarioMonthly = result.monthly.map(row => round(row.scenarioRevenue / 100000000, 3));
+  const currentWeightedSmp = result.hourly.map(row => row.currentWeightedSmp == null ? null : round(row.currentWeightedSmp, 1));
+  const scenarioWeightedSmp = result.hourly.map(row => row.scenarioWeightedSmp == null ? null : round(row.scenarioWeightedSmp, 1));
+
+  if ($("smpHourlyChart")) {
+    if (!smpHourlyChart) {
+      smpHourlyChart = new Chart($("smpHourlyChart"), {
+        type: "line",
+        data: { labels: hourLabels, datasets: [
+          { label: "기준안 사용량 가중평균 SMP", data: currentWeightedSmp, borderWidth: 2, tension: .25 },
+          { label: "신규요금 사용량 가중평균 SMP", data: scenarioWeightedSmp, borderWidth: 2, tension: .25 }
+        ]},
+        options: chartOptions("원/kWh")
+      });
+    } else {
+      smpHourlyChart.data.labels = hourLabels;
+      smpHourlyChart.data.datasets[0].data = currentWeightedSmp;
+      smpHourlyChart.data.datasets[1].data = scenarioWeightedSmp;
+      smpHourlyChart.update();
+    }
+  }
 
   if (!hourlyChart) {
     hourlyChart = new Chart($("hourlyChart"), {
@@ -1212,9 +1239,9 @@ function renderPeriodTable(result) {
 
 function renderHourlyTable(result) {
   $("hourlyTable").innerHTML = `
-    <thead><tr><th>시각</th><th>현행 평균부하</th><th>변경 평균부하</th><th>평균부하 증감</th><th>현행 매출</th><th>변경 매출</th><th>매출 증감</th></tr></thead>
+    <thead><tr><th>시각</th><th>현행 평균부하</th><th>변경 평균부하</th><th>평균부하 증감</th><th>기준안 가중평균 SMP</th><th>신규요금 가중평균 SMP</th><th>SMP 차이</th><th>현행 매출</th><th>변경 매출</th><th>매출 증감</th></tr></thead>
     <tbody>${result.hourly.map(row => `
-      <tr><td>${String(row.hour).padStart(2,"0")}:00~${String((row.hour+1)%24).padStart(2,"0")}:00</td><td>${number(row.avgCurrentKwh)} kWh</td><td>${number(row.avgScenarioKwh)} kWh</td><td>${formatSignedKwh(row.avgScenarioKwh - row.avgCurrentKwh)}</td><td>${formatWon(row.currentRevenue)}</td><td>${formatWon(row.scenarioRevenue)}</td><td>${formatSignedWon(row.scenarioRevenue - row.currentRevenue)}</td></tr>
+      <tr><td>${String(row.hour).padStart(2,"0")}:00~${String((row.hour+1)%24).padStart(2,"0")}:00</td><td>${number(row.avgCurrentKwh)} kWh</td><td>${number(row.avgScenarioKwh)} kWh</td><td>${formatSignedKwh(row.avgScenarioKwh - row.avgCurrentKwh)}</td><td>${formatUnitPrice(row.currentWeightedSmp)}</td><td>${formatUnitPrice(row.scenarioWeightedSmp)}</td><td>${formatSignedUnitPrice((row.scenarioWeightedSmp ?? 0) - (row.currentWeightedSmp ?? 0))}</td><td>${formatWon(row.currentRevenue)}</td><td>${formatWon(row.scenarioRevenue)}</td><td>${formatSignedWon(row.scenarioRevenue - row.currentRevenue)}</td></tr>
     `).join("")}</tbody>`;
 }
 
@@ -1234,12 +1261,15 @@ function setRevenueNeutralAdjustment() {
 
 function downloadHourlyCsv() {
   if (!lastResult) return;
-  const header = ["hour","current_avg_kwh","scenario_avg_kwh","delta_avg_kwh","current_revenue_won","scenario_revenue_won","delta_revenue_won"];
+  const header = ["hour","current_avg_kwh","scenario_avg_kwh","delta_avg_kwh","current_weighted_smp_won_per_kwh","scenario_weighted_smp_won_per_kwh","delta_weighted_smp_won_per_kwh","current_revenue_won","scenario_revenue_won","delta_revenue_won"];
   const rows = lastResult.hourly.map(row => [
     `${String(row.hour).padStart(2,"0")}:00`,
     round(row.avgCurrentKwh, 3),
     round(row.avgScenarioKwh, 3),
     round(row.avgScenarioKwh - row.avgCurrentKwh, 3),
+    row.currentWeightedSmp == null ? "" : round(row.currentWeightedSmp, 3),
+    row.scenarioWeightedSmp == null ? "" : round(row.scenarioWeightedSmp, 3),
+    (row.currentWeightedSmp == null || row.scenarioWeightedSmp == null) ? "" : round(row.scenarioWeightedSmp - row.currentWeightedSmp, 3),
     round(row.currentRevenue, 0),
     round(row.scenarioRevenue, 0),
     round(row.scenarioRevenue - row.currentRevenue, 0)
@@ -1265,6 +1295,12 @@ function formatWon(value) {
 
 function formatSignedWon(value) {
   return `${value >= 0 ? "+" : ""}${formatWon(value)}`;
+}
+
+function formatUnitPrice(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "–";
+  return `${number(n, 1)}원/kWh`;
 }
 
 function formatSignedUnitPrice(value) {
