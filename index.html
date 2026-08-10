@@ -179,7 +179,7 @@
           <li>2025년 연간 시간대별 사용량을 2026년 현행 전기차 요금으로 재계산</li>
           <li>2025.1.27은 평일로 보정</li>
           <li>부가가치세·전력산업기반기금·기후환경요금·연료비조정요금 제외</li>
-          <li>SMP 기반 구입비: 2025년 제주 시간대별 SMP × 시간대별 충전사용량으로 산정</li>
+          <li>SMP 기반 구입비 영향: 시간대별 사용량 증감 × 2025년 해당 시각 제주 SMP를 합산하여 산정</li>
         </ul>
       </section>
     </aside>
@@ -190,7 +190,7 @@
       <section class="card smp-card" aria-label="SMP 기반 구입비 영향">
         <div class="card-title-row">
           <h2>SMP 기반 구입비 영향</h2>
-          <span class="muted">2025년 제주 시간대별 SMP 고정 · 부하이전에 따른 SMP 자체 변화 없음</span>
+          <span class="muted">2025년 제주 시간대별 SMP 고정 · 시간대별 사용량 증감 × 해당 시각 SMP로 직접 산정</span>
         </div>
         <div class="smp-grid" id="smpGrid"></div>
       </section>
@@ -248,7 +248,7 @@
   </main>
 
   <footer class="footer">
-    <span>PRAS-EV v2.11 · GitHub Pages 정적 웹앱</span>
+    <span>PRAS-EV v2.12 · GitHub Pages 정적 웹앱</span>
     <span>전력량요금 매출 영향 검토용</span>
   </footer>
 </body>

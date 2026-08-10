@@ -1,4 +1,4 @@
-/* PRAS-EV v2.9 — 전기차 요금설계 및 매출영향 분석 시뮬레이터
+/* PRAS-EV v2.12 — 전기차 요금설계 및 매출영향 분석 시뮬레이터
    - 전력량요금만 산정
    - 2025년 사용량 × 2026년 전기자동차 충전전력요금
    - 제주 시간대: 경부하 22~08, 중간부하 08~16, 최대부하 16~22
@@ -449,7 +449,7 @@ function computeScenario(controls) {
   };
   const records = window.EV_USAGE_DATA.records.filter((rec) => controls.filterType === "all" || rec.charge_type === controls.filterType);
   const monthly = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, currentRevenue: 0, scenarioRevenue: 0, currentKwh: 0, scenarioKwh: 0 }));
-  const hourly = Array.from({ length: 24 }, (_, h) => ({ hour: h, currentKwh: 0, scenarioKwh: 0, currentRevenue: 0, scenarioRevenue: 0, currentSmpCost: 0, scenarioSmpCost: 0, currentSmpKwh: 0, scenarioSmpKwh: 0 }));
+  const hourly = Array.from({ length: 24 }, (_, h) => ({ hour: h, currentKwh: 0, scenarioKwh: 0, currentRevenue: 0, scenarioRevenue: 0, currentSmpCost: 0, scenarioSmpCost: 0, smpPurchaseImpact: 0 }));
   const period = blankPeriodStats();
   const typeTotals = { slow: { kwh: 0, scenarioKwh: 0, shifted: 0 }, fast: { kwh: 0, scenarioKwh: 0, shifted: 0 } };
 
@@ -468,6 +468,8 @@ function computeScenario(controls) {
   let annualMaxScenarioHourKwh = 0;
   let currentPurchaseCost = 0;
   let scenarioPurchaseCost = 0;
+  let purchaseCostIncrease = 0;
+  let purchaseCostDecrease = 0;
   let missingSmpHours = 0;
   const participantRateStats = {
     discount: { kwh: 0, revenue: 0, currentRevenue: 0 },
@@ -542,12 +544,16 @@ function computeScenario(controls) {
       if (smp == null) {
         missingSmpHours += 1;
       } else {
-        currentPurchaseCost += kwh * smp;
-        scenarioPurchaseCost += afterKwh * smp;
-        hourly[h].currentSmpCost += kwh * smp;
-        hourly[h].scenarioSmpCost += afterKwh * smp;
-        hourly[h].currentSmpKwh += kwh;
-        hourly[h].scenarioSmpKwh += afterKwh;
+        const currentSmpCost = kwh * smp;
+        const scenarioSmpCost = afterKwh * smp;
+        const smpImpact = (afterKwh - kwh) * smp;
+        currentPurchaseCost += currentSmpCost;
+        scenarioPurchaseCost += scenarioSmpCost;
+        hourly[h].currentSmpCost += currentSmpCost;
+        hourly[h].scenarioSmpCost += scenarioSmpCost;
+        hourly[h].smpPurchaseImpact += smpImpact;
+        if (smpImpact >= 0) purchaseCostIncrease += smpImpact;
+        else purchaseCostDecrease += smpImpact;
       }
       const curRev = kwh * cr;
       const noShiftRev = nonKwh * cr + partKwh * nr;
@@ -598,8 +604,9 @@ function computeScenario(controls) {
   hourly.forEach((row) => {
     row.avgCurrentKwh = row.currentKwh / dayCount;
     row.avgScenarioKwh = row.scenarioKwh / dayCount;
-    row.currentWeightedSmp = row.currentSmpKwh > 0 ? row.currentSmpCost / row.currentSmpKwh : null;
-    row.scenarioWeightedSmp = row.scenarioSmpKwh > 0 ? row.scenarioSmpCost / row.scenarioSmpKwh : null;
+    row.annualKwhDelta = row.scenarioKwh - row.currentKwh;
+    // 시간대별 SMP는 2025년 실제값을 그대로 고정하고, 사용량 증감분에 직접 곱해 구입비 영향을 산정
+    row.smpPurchaseImpact = row.scenarioSmpCost - row.currentSmpCost;
   });
 
   return {
@@ -627,6 +634,8 @@ function computeScenario(controls) {
     currentPurchaseCost,
     scenarioPurchaseCost,
     purchaseCostDelta: scenarioPurchaseCost - currentPurchaseCost,
+    purchaseCostIncrease,
+    purchaseCostDecrease,
     missingSmpHours,
     monthly,
     hourly,
@@ -1112,7 +1121,7 @@ function renderSmpPurchaseImpact(result) {
     {
       label: "SMP 기반 구입비 영향",
       value: formatSignedWon(delta),
-      sub: `${formatSignedPct(pct)} · 이전 1kWh당 ${formatSignedUnitPrice(perShiftKwh)} · 비용 감소(-) / 증가(+)`,
+      sub: `${formatSignedPct(pct)} · 사용량 감소시간 절감 ${formatSignedWon(result.purchaseCostDecrease)} · 사용량 증가시간 부담 ${formatSignedWon(result.purchaseCostIncrease)} · 이전 1kWh당 ${formatSignedUnitPrice(perShiftKwh)}`,
       cls: `delta ${deltaClass}`
     }
   ];
@@ -1218,9 +1227,9 @@ function renderPeriodTable(result) {
 
 function renderHourlyTable(result) {
   $("hourlyTable").innerHTML = `
-    <thead><tr><th>시각</th><th>현행 평균부하</th><th>변경 평균부하</th><th>평균부하 증감</th><th>기준안 가중평균 SMP</th><th>신규요금 가중평균 SMP</th><th>SMP 차이</th><th>현행 매출</th><th>변경 매출</th><th>매출 증감</th></tr></thead>
+    <thead><tr><th>시각</th><th>현행 평균부하</th><th>변경 평균부하</th><th>평균부하 증감</th><th>연간 사용량 증감</th><th>SMP 기반 구입비 영향</th><th>현행 매출</th><th>변경 매출</th><th>매출 증감</th></tr></thead>
     <tbody>${result.hourly.map(row => `
-      <tr><td>${String(row.hour).padStart(2,"0")}:00~${String((row.hour+1)%24).padStart(2,"0")}:00</td><td>${number(row.avgCurrentKwh)} kWh</td><td>${number(row.avgScenarioKwh)} kWh</td><td>${formatSignedKwh(row.avgScenarioKwh - row.avgCurrentKwh)}</td><td>${formatUnitPrice(row.currentWeightedSmp)}</td><td>${formatUnitPrice(row.scenarioWeightedSmp)}</td><td>${formatSignedUnitPrice((row.scenarioWeightedSmp ?? 0) - (row.currentWeightedSmp ?? 0))}</td><td>${formatWon(row.currentRevenue)}</td><td>${formatWon(row.scenarioRevenue)}</td><td>${formatSignedWon(row.scenarioRevenue - row.currentRevenue)}</td></tr>
+      <tr><td>${String(row.hour).padStart(2,"0")}:00~${String((row.hour+1)%24).padStart(2,"0")}:00</td><td>${number(row.avgCurrentKwh)} kWh</td><td>${number(row.avgScenarioKwh)} kWh</td><td>${formatSignedKwh(row.avgScenarioKwh - row.avgCurrentKwh)}</td><td>${formatSignedKwh(row.annualKwhDelta)}</td><td>${formatSignedWon(row.smpPurchaseImpact)}</td><td>${formatWon(row.currentRevenue)}</td><td>${formatWon(row.scenarioRevenue)}</td><td>${formatSignedWon(row.scenarioRevenue - row.currentRevenue)}</td></tr>
     `).join("")}</tbody>`;
 }
 
@@ -1240,15 +1249,14 @@ function setRevenueNeutralAdjustment() {
 
 function downloadHourlyCsv() {
   if (!lastResult) return;
-  const header = ["hour","current_avg_kwh","scenario_avg_kwh","delta_avg_kwh","current_weighted_smp_won_per_kwh","scenario_weighted_smp_won_per_kwh","delta_weighted_smp_won_per_kwh","current_revenue_won","scenario_revenue_won","delta_revenue_won"];
+  const header = ["hour","current_avg_kwh","scenario_avg_kwh","delta_avg_kwh","annual_delta_kwh","smp_purchase_impact_won","current_revenue_won","scenario_revenue_won","delta_revenue_won"];
   const rows = lastResult.hourly.map(row => [
     `${String(row.hour).padStart(2,"0")}:00`,
     round(row.avgCurrentKwh, 3),
     round(row.avgScenarioKwh, 3),
     round(row.avgScenarioKwh - row.avgCurrentKwh, 3),
-    row.currentWeightedSmp == null ? "" : round(row.currentWeightedSmp, 3),
-    row.scenarioWeightedSmp == null ? "" : round(row.scenarioWeightedSmp, 3),
-    (row.currentWeightedSmp == null || row.scenarioWeightedSmp == null) ? "" : round(row.scenarioWeightedSmp - row.currentWeightedSmp, 3),
+    round(row.annualKwhDelta, 3),
+    round(row.smpPurchaseImpact, 0),
     round(row.currentRevenue, 0),
     round(row.scenarioRevenue, 0),
     round(row.scenarioRevenue - row.currentRevenue, 0)
