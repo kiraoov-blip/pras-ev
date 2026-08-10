@@ -113,7 +113,6 @@ const TYPE_LABEL = { all: "전체", slow: "완속", fast: "급속" };
 const $ = (id) => document.getElementById(id);
 let hourlyChart = null;
 let monthlyChart = null;
-let smpHourlyChart = null;
 let lastResult = null;
 let lastNeutralInfo = null;
 const rawCurrentAvgCache = new Map();
@@ -1135,26 +1134,6 @@ function renderCharts(result) {
   const monthLabels = result.monthly.map(row => `${row.month}월`);
   const currentMonthly = result.monthly.map(row => round(row.currentRevenue / 100000000, 3));
   const scenarioMonthly = result.monthly.map(row => round(row.scenarioRevenue / 100000000, 3));
-  const currentWeightedSmp = result.hourly.map(row => row.currentWeightedSmp == null ? null : round(row.currentWeightedSmp, 1));
-  const scenarioWeightedSmp = result.hourly.map(row => row.scenarioWeightedSmp == null ? null : round(row.scenarioWeightedSmp, 1));
-
-  if ($("smpHourlyChart")) {
-    if (!smpHourlyChart) {
-      smpHourlyChart = new Chart($("smpHourlyChart"), {
-        type: "line",
-        data: { labels: hourLabels, datasets: [
-          { label: "기준안 사용량 가중평균 SMP", data: currentWeightedSmp, borderWidth: 2, tension: .25 },
-          { label: "신규요금 사용량 가중평균 SMP", data: scenarioWeightedSmp, borderWidth: 2, tension: .25 }
-        ]},
-        options: chartOptions("원/kWh")
-      });
-    } else {
-      smpHourlyChart.data.labels = hourLabels;
-      smpHourlyChart.data.datasets[0].data = currentWeightedSmp;
-      smpHourlyChart.data.datasets[1].data = scenarioWeightedSmp;
-      smpHourlyChart.update();
-    }
-  }
 
   if (!hourlyChart) {
     hourlyChart = new Chart($("hourlyChart"), {
