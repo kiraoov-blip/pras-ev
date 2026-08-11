@@ -124,9 +124,9 @@ input[type="range"]{width:100%;accent-color:var(--accent)}
   padding:14px;
   min-height:108px;
 }
-.smp-item span{display:block;font-size:12px;font-weight:800;color:#64748b;margin-bottom:8px}
-.smp-item strong{display:block;font-size:23px;line-height:1.2;letter-spacing:-.02em;margin-bottom:8px}
-.smp-item em{display:block;font-size:12px;line-height:1.4;color:#64748b;font-style:normal}
+.smp-item span{display:block;font-family:inherit;font-size:12px;font-weight:700;color:#64748b;margin-bottom:10px}
+.smp-item strong{display:block;font-family:inherit;font-size:24px;font-weight:800;line-height:1.2;letter-spacing:-.02em;margin-bottom:6px}
+.smp-item em{display:block;font-family:inherit;font-size:12px;font-weight:400;line-height:1.35;color:#64748b;font-style:normal}
 .smp-item.delta.positive strong{color:var(--good)}
 .smp-item.delta.negative strong{color:var(--bad)}
 
@@ -140,16 +140,18 @@ input[type="range"]{width:100%;accent-color:var(--accent)}
   min-height:112px;
 }
 .neutral-item.primary{background:var(--soft);border-color:#b7d4ff}
-.neutral-item span{display:block;font-size:12px;font-weight:800;color:#64748b;margin-bottom:8px}
-.neutral-item strong{display:block;font-size:23px;line-height:1.2;letter-spacing:-.02em;margin-bottom:8px}
-.neutral-item em{display:block;font-size:12px;line-height:1.4;color:#64748b;font-style:normal}
+.neutral-item span{display:block;font-family:inherit;font-size:12px;font-weight:700;color:#64748b;margin-bottom:10px}
+.neutral-item strong{display:block;font-family:inherit;font-size:24px;font-weight:800;line-height:1.2;letter-spacing:-.02em;margin-bottom:6px}
+.neutral-item em{display:block;font-family:inherit;font-size:12px;font-weight:400;line-height:1.35;color:#64748b;font-style:normal}
 .chart-grid{display:grid;grid-template-columns:1fr;gap:18px}
-.table-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.table-grid{display:grid;grid-template-columns:1fr;gap:18px}
 .card{padding:18px;min-width:0}
 .card-title-row{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px}
 .card-title-row h2{margin:0}
 .muted{font-size:12px;color:var(--muted)}
 .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff}
+.table-grid .table-wrap{overflow-x:hidden}
+.table-grid table{min-width:0;width:100%;table-layout:auto}
 .table-wrap.tall{max-height:520px}
 table{width:100%;border-collapse:collapse;font-size:13px;min-width:520px}
 th,td{padding:9px 10px;border-bottom:1px solid #e5eaf2;text-align:right;white-space:nowrap}
