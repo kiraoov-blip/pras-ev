@@ -1,4 +1,4 @@
-/* PRAS-EV v2.13 — 전기차 요금설계 및 매출영향 분석 시뮬레이터
+/* PRAS-EV v2.14 — 전기차 요금설계 및 매출영향 분석 시뮬레이터
    - 전력량요금만 산정
    - 2025년 사용량 × 2026년 전기자동차 충전전력요금
    - 제주 시간대: 경부하 22~08, 중간부하 08~16, 최대부하 16~22
@@ -893,20 +893,20 @@ function renderRateComparison(result) {
     </div>
     <div class="rate-compare-row baseline">
       <strong>현행요금 환산</strong>
-      <b>${rateText(baseDiscountRate)}</b>
-      <b>${rateText(baseOutsideRate)}</b>
+      <b data-label="할인시간대">${rateText(baseDiscountRate)}</b>
+      <b data-label="할인시간 외">${rateText(baseOutsideRate)}</b>
       <em>동일한 부하이전 후 참여고객 사용량 기준 · ${currentTariffAdjustmentLabel(result.controls)} · 기존 주말할인 반영</em>
     </div>
     <div class="rate-compare-row">
       <strong>현재 설정안</strong>
-      <b>${rateText(currentDiscountRate)}</b>
-      <b>${rateText(currentOutsideRate)}</b>
+      <b data-label="할인시간대">${rateText(currentDiscountRate)}</b>
+      <b data-label="할인시간 외">${rateText(currentOutsideRate)}</b>
       <em>${condition} · 비할인시간 ${formatSignedPctOne(result.controls.nonDiscountAdj)} 조정 · 매출증감 ${formatSignedWon(result.revenueDelta)}</em>
     </div>
     <div class="rate-compare-row neutral">
       <strong>매출중립안</strong>
-      <b>${rateText(neutralDiscountRate)}</b>
-      <b>${rateText(neutralOutsideRate)}</b>
+      <b data-label="할인시간대">${rateText(neutralDiscountRate)}</b>
+      <b data-label="할인시간 외">${rateText(neutralOutsideRate)}</b>
       <em>${neutralFoot}</em>
     </div>
     <div class="rate-source-note"><strong>선택한 현행 요금표 원단가 범위</strong><span>${tariffRange}</span><small>계절·경부하·중간부하·최대부하별 단가이며 기존 주말 50% 할인 적용 전 기준</small></div>
@@ -1180,9 +1180,9 @@ function renderCharts(result) {
 function chartOptions(yTitle) {
   return {
     responsive: true,
-    maintainAspectRatio: true,
+    maintainAspectRatio: false,
     plugins: {
-      legend: { position: "bottom" },
+      legend: { position: "bottom", labels: { boxWidth: 12, boxHeight: 12, padding: 12 } },
       tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${number(ctx.raw)}` } }
     },
     scales: {
@@ -1209,7 +1209,7 @@ function renderDecompTable(result) {
   $("decompTable").innerHTML = `
     <thead><tr><th>구분</th><th>금액</th><th>비고</th></tr></thead>
     <tbody>${rows.map((r, idx) => `
-      <tr><td>${r[0]}</td><td>${idx === 0 || idx === 3 ? formatWon(r[1]) : formatSignedWon(r[1])}</td><td>${r[2]}</td></tr>
+      <tr><td data-label="구분">${r[0]}</td><td data-label="금액">${idx === 0 || idx === 3 ? formatWon(r[1]) : formatSignedWon(r[1])}</td><td data-label="비고">${r[2]}</td></tr>
     `).join("")}</tbody>`;
 }
 
@@ -1221,7 +1221,7 @@ function renderPeriodTable(result) {
   $("periodTable").innerHTML = `
     <thead><tr><th>시간대</th><th>현행 사용량</th><th>변경 사용량</th><th>사용량 증감</th><th>현행 매출</th><th>변경 매출</th><th>매출 증감</th></tr></thead>
     <tbody>${rows.map(r => `
-      <tr><td>${r[0]}</td><td>${formatKwh(r[1])}</td><td>${formatKwh(r[2])}</td><td>${formatSignedKwh(r[3])}</td><td>${formatWon(r[4])}</td><td>${formatWon(r[5])}</td><td>${formatSignedWon(r[6])}</td></tr>
+      <tr><td data-label="시간대">${r[0]}</td><td data-label="현행 사용량">${formatKwh(r[1])}</td><td data-label="변경 사용량">${formatKwh(r[2])}</td><td data-label="사용량 증감">${formatSignedKwh(r[3])}</td><td data-label="현행 매출">${formatWon(r[4])}</td><td data-label="변경 매출">${formatWon(r[5])}</td><td data-label="매출 증감">${formatSignedWon(r[6])}</td></tr>
     `).join("")}</tbody>`;
 }
 
@@ -1229,7 +1229,7 @@ function renderHourlyTable(result) {
   $("hourlyTable").innerHTML = `
     <thead><tr><th>시각</th><th>현행 평균부하</th><th>변경 평균부하</th><th>평균부하 증감</th><th>연간 사용량 증감</th><th>SMP 기반 구입비 영향</th><th>현행 매출</th><th>변경 매출</th><th>매출 증감</th></tr></thead>
     <tbody>${result.hourly.map(row => `
-      <tr><td>${String(row.hour).padStart(2,"0")}:00~${String((row.hour+1)%24).padStart(2,"0")}:00</td><td>${number(row.avgCurrentKwh)} kWh</td><td>${number(row.avgScenarioKwh)} kWh</td><td>${formatSignedKwh(row.avgScenarioKwh - row.avgCurrentKwh)}</td><td>${formatSignedKwh(row.annualKwhDelta)}</td><td>${formatSignedWon(row.smpPurchaseImpact)}</td><td>${formatWon(row.currentRevenue)}</td><td>${formatWon(row.scenarioRevenue)}</td><td>${formatSignedWon(row.scenarioRevenue - row.currentRevenue)}</td></tr>
+      <tr><td data-label="시각">${String(row.hour).padStart(2,"0")}:00~${String((row.hour+1)%24).padStart(2,"0")}:00</td><td data-label="현행 평균부하">${number(row.avgCurrentKwh)} kWh</td><td data-label="변경 평균부하">${number(row.avgScenarioKwh)} kWh</td><td data-label="평균부하 증감">${formatSignedKwh(row.avgScenarioKwh - row.avgCurrentKwh)}</td><td data-label="연간 사용량 증감">${formatSignedKwh(row.annualKwhDelta)}</td><td data-label="SMP 기반 구입비 영향">${formatSignedWon(row.smpPurchaseImpact)}</td><td data-label="현행 매출">${formatWon(row.currentRevenue)}</td><td data-label="변경 매출">${formatWon(row.scenarioRevenue)}</td><td data-label="매출 증감">${formatSignedWon(row.scenarioRevenue - row.currentRevenue)}</td></tr>
     `).join("")}</tbody>`;
 }
 
