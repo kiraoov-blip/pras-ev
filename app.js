@@ -1323,7 +1323,9 @@ function compactNumber(value, maxDigits = 6) {
 }
 
 function number(value, digits = 0) {
-  return Number(value).toLocaleString("ko-KR", { maximumFractionDigits: digits, minimumFractionDigits: digits });
+  // 화면 표시 숫자는 소수점 첫째자리까지만 (정수 표기는 0자리 유지)
+  const d = Math.min(digits, 1);
+  return Number(value).toLocaleString("ko-KR", { maximumFractionDigits: d, minimumFractionDigits: d });
 }
 
 function round(value, digits = 0) {
